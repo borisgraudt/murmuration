@@ -1,3 +1,4 @@
+
 # **MeshNet: Decentralized Encrypted Communication Protocol**
 
 > **A fully peer-to-peer, censorship-resistant communication layer** designed for autonomy, privacy, and resilience — built with **Rust** and **Python AI integration**.
@@ -15,28 +16,33 @@ This project aims to explore how **AI-driven routing, cryptographic identity, an
 
 ## ⚙️ Architecture Overview
 
+```
+
 meshnet/
-├── core/ # Core Rust-based P2P protocol
-│ ├── Cargo.toml
-│ └── src/
-|   ├── main.rs
-|   ├── lib.rs
-|   ├── p2p/
-│   | ├── discovery.rs
-│   | ├── encryption.rs
-│   | ├── peer.rs
-│   | └── protocol.rs
-|   └── utils/
-│     ├── config.rs
-│     ├── crypto.rs
-│     └── logger.rs
-|
+├── core/                   # Core Rust-based P2P protocol
+│   ├── Cargo.toml
+│   └── src/
+│       ├── main.rs
+│       ├── lib.rs
+│       ├── p2p/
+│       │   ├── discovery.rs
+│       │   ├── encryption.rs
+│       │   ├── peer.rs
+│       │   └── protocol.rs
+│       └── utils/
+│           ├── config.rs
+│           ├── crypto.rs
+│           └── logger.rs
+│
 ├── docs/
-│ ├── architecture.md
-│ ├── protocol_spec.md
-│ └── roadmap.md
+│   ├── architecture.md
+│   ├── protocol_spec.md
+│   └── roadmap.md
 │
 └── README.md
+
+```
+
 ---
 
 ## 🔒 Core Protocol Design
@@ -51,10 +57,15 @@ Connections are authenticated via asymmetric cryptography, and messages are rout
 - **Resilience** — works in isolated LAN or Wi-Fi Direct environments.
 
 **Handshake example:**
+
+```
+
 Node A ---> SYN + PubKeyA
 Node B ---> ACK + PubKeyB + Signature
 Node A ---> Encrypted session init
 Secure channel established 🔐
+
+```
 
 ---
 
@@ -72,10 +83,15 @@ Planned extension: integration of **federated learning** to allow each node to i
 ## 🧰 CLI Interface
 
 The Python CLI provides a minimal shell-like environment:
+
+```
+
 meshnet> connect peer123@192.168.1.12
 meshnet> send "hello world"
 meshnet> peers
 meshnet> status
+
+```
 
 You can chat, monitor routes, and even deploy custom modules for testing encryption or routing.
 
@@ -106,8 +122,9 @@ This project demonstrates:
 
 ## 🧬 Credits
 
-**Protocol & Cryptography:** Boris Graudt
-**CLI & AI Systems:** Ivan Shatalov
+**Protocol & Cryptography:** Boris Graudt  
+**CLI & AI Systems:** Ivan Shatalov  
+
 Built for research and innovation — *inspired by autonomy, resilience, and freedom.*
 
 ---
