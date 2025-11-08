@@ -17,9 +17,7 @@ enum ApiRequest {
         message: String,
     },
     #[serde(rename = "broadcast")]
-    Broadcast {
-        message: String,
-    },
+    Broadcast { message: String },
     #[serde(rename = "peers")]
     Peers,
     #[serde(rename = "status")]
@@ -44,7 +42,7 @@ impl ApiResponse {
             error: None,
         }
     }
-    
+
     fn error(msg: String) -> Self {
         Self {
             success: false,
@@ -56,11 +54,12 @@ impl ApiResponse {
 
 /// Start API server for CLI
 pub async fn start_api_server(node: Node, api_addr: SocketAddr) -> Result<()> {
-    let listener = TcpListener::bind(&api_addr).await
+    let listener = TcpListener::bind(&api_addr)
+        .await
         .map_err(|e| MeshError::Io(e))?;
-    
+
     info!("API server listening on {}", api_addr);
-    
+
     loop {
         match listener.accept().await {
             Ok((stream, addr)) => {
@@ -84,7 +83,7 @@ async fn handle_api_client(mut stream: TcpStream, node: Node) -> Result<()> {
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-    
+
     loop {
         line.clear();
         match reader.read_line(&mut line).await {
@@ -97,18 +96,23 @@ async fn handle_api_client(mut stream: TcpStream, node: Node) -> Result<()> {
                 if trimmed.is_empty() {
                     continue;
                 }
-                
+
                 let response = match handle_request(trimmed, &node).await {
                     Ok(resp) => resp,
                     Err(e) => ApiResponse::error(format!("{}", e)),
                 };
-                
-                let json = serde_json::to_string(&response)
-                    .map_err(|e| MeshError::Protocol(format!("Failed to serialize response: {}", e)))?;
-                
-                writer.write_all(json.as_bytes()).await
+
+                let json = serde_json::to_string(&response).map_err(|e| {
+                    MeshError::Protocol(format!("Failed to serialize response: {}", e))
+                })?;
+
+                writer
+                    .write_all(json.as_bytes())
+                    .await
                     .map_err(|e| MeshError::Io(e))?;
-                writer.write_all(b"\n").await
+                writer
+                    .write_all(b"\n")
+                    .await
                     .map_err(|e| MeshError::Io(e))?;
             }
             Err(e) => {
@@ -117,7 +121,7 @@ async fn handle_api_client(mut stream: TcpStream, node: Node) -> Result<()> {
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -125,39 +129,38 @@ async fn handle_api_client(mut stream: TcpStream, node: Node) -> Result<()> {
 async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
     let req: ApiRequest = serde_json::from_str(request)
         .map_err(|e| MeshError::Protocol(format!("Invalid request: {}", e)))?;
-    
+
     match req {
         ApiRequest::Send { peer_id, message } => {
             let data = message.into_bytes();
             match node.send_mesh_message(peer_id, data).await {
-                Ok(message_id) => {
-                    Ok(ApiResponse::success(serde_json::json!({
-                        "message_id": message_id
-                    })))
-                }
+                Ok(message_id) => Ok(ApiResponse::success(serde_json::json!({
+                    "message_id": message_id
+                }))),
                 Err(e) => Ok(ApiResponse::error(format!("{}", e))),
             }
         }
         ApiRequest::Broadcast { message } => {
             let data = message.into_bytes();
             match node.send_mesh_message(None, data).await {
-                Ok(message_id) => {
-                    Ok(ApiResponse::success(serde_json::json!({
-                        "message_id": message_id
-                    })))
-                }
+                Ok(message_id) => Ok(ApiResponse::success(serde_json::json!({
+                    "message_id": message_id
+                }))),
                 Err(e) => Ok(ApiResponse::error(format!("{}", e))),
             }
         }
         ApiRequest::Peers => {
             let peers = node.get_peers().await;
-            let peers_json: Vec<_> = peers.into_iter().map(|(id, addr, state)| {
-                serde_json::json!({
-                    "id": id,
-                    "address": addr.to_string(),
-                    "state": format!("{:?}", state)
+            let peers_json: Vec<_> = peers
+                .into_iter()
+                .map(|(id, addr, state)| {
+                    serde_json::json!({
+                        "id": id,
+                        "address": addr.to_string(),
+                        "state": format!("{:?}", state)
+                    })
                 })
-            }).collect();
+                .collect();
             Ok(ApiResponse::success(serde_json::json!({
                 "peers": peers_json
             })))
@@ -172,4 +175,3 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
         }
     }
 }
-

@@ -9,7 +9,7 @@ impl EventEmitter {
     pub fn new(node_id: String) -> Self {
         Self { node_id }
     }
-    
+
     pub async fn emit(&self, event: &str, peer: Option<&str>) {
         let payload = serde_json::json!({
             "node": self.node_id,
@@ -32,4 +32,3 @@ impl Clone for EventEmitter {
         }
     }
 }
-

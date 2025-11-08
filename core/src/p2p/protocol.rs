@@ -17,7 +17,7 @@ pub enum Message {
         listen_port: u16,
         public_key: Option<String>, // RSA public key (base64 encoded)
     },
-    
+
     /// Acknowledgment of handshake
     #[serde(rename = "handshake_ack")]
     HandshakeAck {
@@ -25,44 +25,36 @@ pub enum Message {
         protocol_version: u8,
         public_key: Option<String>, // RSA public key (base64 encoded)
         encrypted_session_key: Option<Vec<u8>>, // AES session key encrypted with our RSA public key
-        nonce: Option<Vec<u8>>, // AES nonce
+        nonce: Option<Vec<u8>>,     // AES nonce
     },
-    
+
     /// Regular data message
     #[serde(rename = "data")]
     Data {
         payload: Vec<u8>,
         message_id: String,
     },
-    
+
     /// Ping message for keepalive
     #[serde(rename = "ping")]
-    Ping {
-        timestamp: i64,
-    },
-    
+    Ping { timestamp: i64 },
+
     /// Pong response to ping
     #[serde(rename = "pong")]
-    Pong {
-        timestamp: i64,
-    },
-    
+    Pong { timestamp: i64 },
+
     /// Peer discovery request
     #[serde(rename = "peer_request")]
     PeerRequest,
-    
+
     /// Peer discovery response
     #[serde(rename = "peer_response")]
-    PeerResponse {
-        peers: Vec<String>,
-    },
-    
+    PeerResponse { peers: Vec<String> },
+
     /// Connection close notification
     #[serde(rename = "close")]
-    Close {
-        reason: String,
-    },
-    
+    Close { reason: String },
+
     /// Elysium mesh message for routing
     #[serde(rename = "mesh_message")]
     MeshMessage {
@@ -70,7 +62,7 @@ pub enum Message {
         to: Option<String>, // None = broadcast
         data: Vec<u8>,
         message_id: String,
-        ttl: u8, // Time to live (hop count)
+        ttl: u8,           // Time to live (hop count)
         path: Vec<String>, // Route path for loop detection
     },
 }
@@ -80,12 +72,12 @@ impl Message {
     pub fn to_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
         serde_json::to_vec(self)
     }
-    
+
     /// Deserialize message from JSON bytes
     pub fn from_bytes(data: &[u8]) -> Result<Self, serde_json::Error> {
         serde_json::from_slice(data)
     }
-    
+
     /// Get message type as string
     pub fn message_type(&self) -> &'static str {
         match self {
@@ -127,7 +119,7 @@ impl Frame {
             is_encrypted: false,
         })
     }
-    
+
     /// Create an encrypted frame (nonce + encrypted_data)
     pub fn from_encrypted(nonce: &[u8], encrypted_data: &[u8]) -> Self {
         let mut payload = Vec::with_capacity(12 + encrypted_data.len());
@@ -139,7 +131,7 @@ impl Frame {
             is_encrypted: true,
         }
     }
-    
+
     /// Extract nonce and encrypted data from encrypted frame
     pub fn extract_encrypted(&self) -> Option<(&[u8], &[u8])> {
         if !self.is_encrypted || self.payload.len() < 12 {
@@ -147,7 +139,7 @@ impl Frame {
         }
         Some((&self.payload[0..12], &self.payload[12..]))
     }
-    
+
     /// Serialize frame to bytes (length prefix + payload)
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(4 + self.payload.len());
@@ -155,38 +147,38 @@ impl Frame {
         buf.extend_from_slice(&self.payload);
         buf
     }
-    
+
     /// Parse frame from bytes (assumes plain by default, encryption handled at higher level)
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < 4 {
             return None;
         }
-        
+
         let length = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
-        
+
         if data.len() < 4 + length {
             return None;
         }
-        
+
         Some(Self {
             length: length as u32,
             payload: data[4..4 + length].to_vec(),
             is_encrypted: false, // Will be determined by context
         })
     }
-    
+
     /// Parse encrypted frame from bytes
     pub fn from_encrypted_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < 4 {
             return None;
         }
-        
+
         let length = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
-        
+
         if data.len() < 4 + length || length < 12 {
             return None;
         }
-        
+
         Some(Self {
             length: length as u32,
             payload: data[4..4 + length].to_vec(),
@@ -198,7 +190,7 @@ impl Frame {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_message_serialization() {
         let msg = Message::Ping { timestamp: 12345 };
@@ -206,7 +198,7 @@ mod tests {
         let deserialized = Message::from_bytes(&bytes).unwrap();
         assert_eq!(msg, deserialized);
     }
-    
+
     #[test]
     fn test_frame_serialization() {
         let msg = Message::Ping { timestamp: 12345 };
@@ -217,4 +209,3 @@ mod tests {
         assert_eq!(frame.payload, parsed.payload);
     }
 }
-

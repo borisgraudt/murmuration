@@ -2,6 +2,5 @@
 pub mod router;
 pub mod stats_collector;
 
-pub use router::{Router, MeshMessage, ElysiumAddress};
+pub use router::{ElysiumAddress, MeshMessage, Router};
 pub use stats_collector::StatsCollector;
-

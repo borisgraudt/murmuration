@@ -5,14 +5,14 @@ use std::time::Duration;
 
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    
+
     if args.len() < 2 {
         print_usage();
         return Ok(());
     }
-    
+
     let command = &args[1];
-    
+
     match command.as_str() {
         "send" => {
             if args.len() < 4 {
@@ -42,7 +42,7 @@ fn main() -> anyhow::Result<()> {
             print_usage();
         }
     }
-    
+
     Ok(())
 }
 
@@ -92,7 +92,7 @@ fn send_message(peer_id: Option<String>, message: String) -> anyhow::Result<()> 
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-    
+
     let request = if let Some(pid) = peer_id {
         serde_json::json!({
             "command": "send",
@@ -105,15 +105,15 @@ fn send_message(peer_id: Option<String>, message: String) -> anyhow::Result<()> 
             "message": message
         })
     };
-    
+
     writeln!(stream, "{}", request.to_string())?;
-    
+
     let mut response = String::new();
     use std::io::BufRead;
     std::io::BufReader::new(&stream).read_line(&mut response)?;
-    
+
     let resp: serde_json::Value = serde_json::from_str(&response)?;
-    
+
     if resp["success"].as_bool().unwrap_or(false) {
         if let Some(msg_id) = resp["data"]["message_id"].as_str() {
             println!("✓ Message sent! ID: {}", msg_id);
@@ -125,7 +125,7 @@ fn send_message(peer_id: Option<String>, message: String) -> anyhow::Result<()> 
         eprintln!("✗ Error: {}", error);
         std::process::exit(1);
     }
-    
+
     Ok(())
 }
 
@@ -134,19 +134,19 @@ fn list_peers() -> anyhow::Result<()> {
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-    
+
     let request = serde_json::json!({
         "command": "peers"
     });
-    
+
     writeln!(stream, "{}", request.to_string())?;
-    
+
     let mut response = String::new();
     use std::io::BufRead;
     std::io::BufReader::new(&stream).read_line(&mut response)?;
-    
+
     let resp: serde_json::Value = serde_json::from_str(&response)?;
-    
+
     if resp["success"].as_bool().unwrap_or(false) {
         if let Some(peers) = resp["data"]["peers"].as_array() {
             if peers.is_empty() {
@@ -167,7 +167,7 @@ fn list_peers() -> anyhow::Result<()> {
         eprintln!("✗ Error: {}", error);
         std::process::exit(1);
     }
-    
+
     Ok(())
 }
 
@@ -176,19 +176,19 @@ fn show_status() -> anyhow::Result<()> {
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
-    
+
     let request = serde_json::json!({
         "command": "status"
     });
-    
+
     writeln!(stream, "{}", request.to_string())?;
-    
+
     let mut response = String::new();
     use std::io::BufRead;
     std::io::BufReader::new(&stream).read_line(&mut response)?;
-    
+
     let resp: serde_json::Value = serde_json::from_str(&response)?;
-    
+
     if resp["success"].as_bool().unwrap_or(false) {
         if let Some(data) = resp["data"].as_object() {
             println!("Node Status:");
@@ -208,7 +208,6 @@ fn show_status() -> anyhow::Result<()> {
         eprintln!("✗ Error: {}", error);
         std::process::exit(1);
     }
-    
+
     Ok(())
 }
-

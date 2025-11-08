@@ -23,7 +23,10 @@ impl ElysiumAddress {
                 node_id: stripped.to_string(),
             })
         } else {
-            Err(MeshError::Protocol(format!("Invalid Elysium address format: {}", addr)))
+            Err(MeshError::Protocol(format!(
+                "Invalid Elysium address format: {}",
+                addr
+            )))
         }
     }
 
@@ -78,7 +81,8 @@ impl MeshMessage {
             message_id,
             ttl,
             path,
-        } = msg {
+        } = msg
+        {
             Some(Self {
                 from: from.clone(),
                 to: to.clone(),
@@ -141,7 +145,7 @@ impl Router {
     pub async fn mark_seen(&self, message_id: &str) {
         let mut seen = self.seen_messages.write().await;
         seen.insert(message_id.to_string(), Instant::now());
-        
+
         // Cleanup old entries (older than 5 minutes)
         seen.retain(|_, timestamp| timestamp.elapsed() < Duration::from_secs(300));
     }
@@ -199,86 +203,100 @@ impl Clone for Router {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_elysium_address_parse() {
         let addr = ElysiumAddress::from_string("ely://node123").unwrap();
         assert_eq!(addr.node_id, "node123");
-        
+
         let invalid = ElysiumAddress::from_string("invalid");
         assert!(invalid.is_err());
     }
-    
+
     #[test]
     fn test_elysium_address_to_string() {
-        let addr = ElysiumAddress { node_id: "node123".to_string() };
+        let addr = ElysiumAddress {
+            node_id: "node123".to_string(),
+        };
         assert_eq!(addr.to_string(), "ely://node123");
     }
-    
+
     #[tokio::test]
     async fn test_router_should_process() {
         let router = Router::new("our-node".to_string());
         let message = MeshMessage::new("peer1".to_string(), None, b"test".to_vec());
-        
+
         // New message should be processed
         assert!(router.should_process(&message).await);
-        
+
         // Mark as seen
         router.mark_seen(&message.message_id).await;
-        
+
         // Should not process again immediately
         assert!(!router.should_process(&message).await);
     }
-    
+
     #[tokio::test]
     async fn test_router_is_for_us() {
         let router = Router::new("our-node".to_string());
-        
+
         // Broadcast message
         let broadcast = MeshMessage::new("peer1".to_string(), None, b"test".to_vec());
         assert!(router.is_for_us(&broadcast));
-        
+
         // Directed to us
-        let directed = MeshMessage::new("peer1".to_string(), Some("our-node".to_string()), b"test".to_vec());
+        let directed = MeshMessage::new(
+            "peer1".to_string(),
+            Some("our-node".to_string()),
+            b"test".to_vec(),
+        );
         assert!(router.is_for_us(&directed));
-        
+
         // Directed to someone else
-        let other = MeshMessage::new("peer1".to_string(), Some("other-node".to_string()), b"test".to_vec());
+        let other = MeshMessage::new(
+            "peer1".to_string(),
+            Some("other-node".to_string()),
+            b"test".to_vec(),
+        );
         assert!(!router.is_for_us(&other));
     }
-    
+
     #[tokio::test]
     async fn test_router_prepare_for_forwarding() {
         let router = Router::new("our-node".to_string());
         let message = MeshMessage::new("peer1".to_string(), None, b"test".to_vec());
         let original_ttl = message.ttl;
-        
+
         let forwarded = router.prepare_for_forwarding(&message);
-        
+
         assert_eq!(forwarded.ttl, original_ttl - 1);
         assert!(forwarded.path.contains(&"our-node".to_string()));
     }
-    
+
     #[tokio::test]
     async fn test_router_get_forward_peers() {
         let router = Router::new("our-node".to_string());
         let message = MeshMessage::new("peer1".to_string(), None, b"test".to_vec());
-        let all_peers = vec!["peer1".to_string(), "peer2".to_string(), "peer3".to_string()];
-        
+        let all_peers = vec![
+            "peer1".to_string(),
+            "peer2".to_string(),
+            "peer3".to_string(),
+        ];
+
         let forward_peers = router.get_forward_peers(&message, &all_peers);
-        
+
         // Should not include sender (peer1) or our node
         assert!(!forward_peers.contains(&"peer1".to_string()));
         assert!(forward_peers.contains(&"peer2".to_string()));
         assert!(forward_peers.contains(&"peer3".to_string()));
     }
-    
+
     #[tokio::test]
     async fn test_router_loop_detection() {
         let router = Router::new("our-node".to_string());
         let mut message = MeshMessage::new("peer1".to_string(), None, b"test".to_vec());
         message.path.push("our-node".to_string());
-        
+
         // Should not process if we're in the path
         assert!(!router.should_process(&message).await);
     }

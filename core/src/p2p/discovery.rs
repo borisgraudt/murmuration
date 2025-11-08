@@ -77,7 +77,12 @@ impl DiscoveryManager {
     }
 
     /// Broadcast discovery messages periodically
-    async fn broadcast_loop(node_id: String, listen_port: u16, public_key: String, discovery_port: u16) {
+    async fn broadcast_loop(
+        node_id: String,
+        listen_port: u16,
+        public_key: String,
+        discovery_port: u16,
+    ) {
         let mut interval = interval(Duration::from_secs(1));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -129,7 +134,8 @@ impl DiscoveryManager {
         };
 
         let mut buf = vec![0u8; 2048];
-        let mut last_seen: std::collections::HashMap<String, Instant> = std::collections::HashMap::new();
+        let mut last_seen: std::collections::HashMap<String, Instant> =
+            std::collections::HashMap::new();
 
         loop {
             match socket.recv_from(&mut buf).await {
@@ -152,10 +158,13 @@ impl DiscoveryManager {
 
                             // Extract peer address
                             let peer_addr = SocketAddr::new(addr.ip(), message.listen_port);
-                            
-                            info!("Discovered peer {} at {} (public key: {}...)", 
-                                message.node_id, peer_addr, 
-                                &message.public_key[..message.public_key.len().min(20)]);
+
+                            info!(
+                                "Discovered peer {} at {} (public key: {}...)",
+                                message.node_id,
+                                peer_addr,
+                                &message.public_key[..message.public_key.len().min(20)]
+                            );
 
                             // Send to channel
                             let _ = discovered_peers.send((
@@ -174,4 +183,3 @@ impl DiscoveryManager {
         }
     }
 }
-

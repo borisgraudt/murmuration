@@ -9,25 +9,25 @@ use std::time::Duration;
 pub struct Config {
     /// Listening address
     pub listen_addr: SocketAddr,
-    
+
     /// Known peer addresses (bootstrap peers)
     pub known_peers: Vec<String>,
-    
+
     /// Connection timeout
     pub connection_timeout: Duration,
-    
+
     /// Keepalive interval
     pub keepalive_interval: Duration,
-    
+
     /// Heartbeat interval
     pub heartbeat_interval: Duration,
-    
+
     /// Peer stale timeout
     pub peer_stale_timeout: Duration,
-    
+
     /// Max connection attempts per peer
     pub max_connection_attempts: u32,
-    
+
     /// Retry connection interval
     pub retry_interval: Duration,
 }
@@ -74,4 +74,3 @@ impl Config {
         })
     }
 }
-
