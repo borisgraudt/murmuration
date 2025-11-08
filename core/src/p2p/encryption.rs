@@ -240,3 +240,43 @@ impl<'de> serde::Deserialize<'de> for EncryptedMessage {
         deserializer.deserialize_map(EncryptedMessageVisitor)
     }
 }
+
+/// Session key for a peer connection
+#[derive(Debug, Clone)]
+pub struct SessionKey {
+    pub key: Key<Aes256Gcm>,
+    pub nonce: Vec<u8>,
+}
+
+/// Manager for storing session keys per peer
+#[derive(Clone)]
+pub struct SessionKeyManager {
+    sessions: Arc<RwLock<std::collections::HashMap<String, SessionKey>>>,
+}
+
+impl SessionKeyManager {
+    /// Create a new session key manager
+    pub fn new() -> Self {
+        Self {
+            sessions: Arc::new(RwLock::new(std::collections::HashMap::new())),
+        }
+    }
+
+    /// Store session key for a peer
+    pub async fn set_session_key(&self, peer_id: String, key: Key<Aes256Gcm>, nonce: Vec<u8>) {
+        let mut sessions = self.sessions.write().await;
+        sessions.insert(peer_id, SessionKey { key, nonce });
+    }
+
+    /// Get session key for a peer
+    pub async fn get_session_key(&self, peer_id: &str) -> Option<SessionKey> {
+        let sessions = self.sessions.read().await;
+        sessions.get(peer_id).cloned()
+    }
+
+    /// Remove session key for a peer
+    pub async fn remove_session_key(&self, peer_id: &str) {
+        let mut sessions = self.sessions.write().await;
+        sessions.remove(peer_id);
+    }
+}

@@ -15,6 +15,7 @@ pub enum Message {
         node_id: String,
         protocol_version: u8,
         listen_port: u16,
+        public_key: Option<String>, // RSA public key (base64 encoded)
     },
     
     /// Acknowledgment of handshake
@@ -22,6 +23,9 @@ pub enum Message {
     HandshakeAck {
         node_id: String,
         protocol_version: u8,
+        public_key: Option<String>, // RSA public key (base64 encoded)
+        encrypted_session_key: Option<Vec<u8>>, // AES session key encrypted with our RSA public key
+        nonce: Option<Vec<u8>>, // AES nonce
     },
     
     /// Regular data message
@@ -105,20 +109,43 @@ impl fmt::Display for Message {
 }
 
 /// Protocol frame with length prefix
+/// Can contain either plain or encrypted payload
 #[derive(Debug)]
 pub struct Frame {
     pub length: u32,
     pub payload: Vec<u8>,
+    pub is_encrypted: bool, // If true, payload is encrypted (nonce + encrypted_data)
 }
 
 impl Frame {
-    /// Create a new frame from a message
+    /// Create a new frame from a message (plain)
     pub fn from_message(message: &Message) -> Result<Self, serde_json::Error> {
         let payload = message.to_bytes()?;
         Ok(Self {
             length: payload.len() as u32,
             payload,
+            is_encrypted: false,
         })
+    }
+    
+    /// Create an encrypted frame (nonce + encrypted_data)
+    pub fn from_encrypted(nonce: &[u8], encrypted_data: &[u8]) -> Self {
+        let mut payload = Vec::with_capacity(12 + encrypted_data.len());
+        payload.extend_from_slice(nonce); // 12 bytes nonce
+        payload.extend_from_slice(encrypted_data);
+        Self {
+            length: payload.len() as u32,
+            payload,
+            is_encrypted: true,
+        }
+    }
+    
+    /// Extract nonce and encrypted data from encrypted frame
+    pub fn extract_encrypted(&self) -> Option<(&[u8], &[u8])> {
+        if !self.is_encrypted || self.payload.len() < 12 {
+            return None;
+        }
+        Some((&self.payload[0..12], &self.payload[12..]))
     }
     
     /// Serialize frame to bytes (length prefix + payload)
@@ -129,7 +156,7 @@ impl Frame {
         buf
     }
     
-    /// Parse frame from bytes
+    /// Parse frame from bytes (assumes plain by default, encryption handled at higher level)
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
         if data.len() < 4 {
             return None;
@@ -144,6 +171,26 @@ impl Frame {
         Some(Self {
             length: length as u32,
             payload: data[4..4 + length].to_vec(),
+            is_encrypted: false, // Will be determined by context
+        })
+    }
+    
+    /// Parse encrypted frame from bytes
+    pub fn from_encrypted_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < 4 {
+            return None;
+        }
+        
+        let length = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
+        
+        if data.len() < 4 + length || length < 12 {
+            return None;
+        }
+        
+        Some(Self {
+            length: length as u32,
+            payload: data[4..4 + length].to_vec(),
+            is_encrypted: true,
         })
     }
 }

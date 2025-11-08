@@ -5,7 +5,7 @@ use crate::p2p::peer::{ConnectionState, PeerManager};
 use crate::p2p::protocol::{Frame, Message};
 use crate::p2p::discovery::DiscoveryManager;
 use crate::p2p::routing::{Router, MeshMessage};
-use crate::p2p::encryption::EncryptionManager;
+use crate::p2p::encryption::{EncryptionManager, SessionKeyManager};
 use crate::utils::event_emitter::EventEmitter;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -34,6 +34,9 @@ pub struct Node {
     /// Encryption manager
     encryption_manager: EncryptionManager,
     
+    /// Session key manager
+    session_keys: SessionKeyManager,
+    
     /// Router for mesh messages
     router: Router,
     
@@ -48,6 +51,7 @@ impl Node {
         let peer_manager = PeerManager::new(id.clone(), config.listen_addr.port());
         let event_emitter = EventEmitter::new(id.clone());
         let encryption_manager = EncryptionManager::new()?;
+        let session_keys = SessionKeyManager::new();
         let router = Router::new(id.clone());
         
         info!("Created new node with ID: {}", id);
@@ -58,6 +62,7 @@ impl Node {
             peer_manager,
             event_emitter,
             encryption_manager,
+            session_keys,
             router,
             shutdown: Arc::new(RwLock::new(false)),
         })
@@ -199,8 +204,8 @@ impl Node {
         self.event_emitter.emit("incoming_connection", Some(&addr.to_string())).await;
         
         // Perform handshake
-        let (peer_id, protocol_version) = match self.peer_manager
-            .perform_handshake(&mut stream, true)
+        let (peer_id, protocol_version, _peer_public_key) = match self.peer_manager
+            .perform_handshake(&mut stream, true, Some(&self.encryption_manager), Some(&self.session_keys))
             .await
         {
             Ok(result) => result,
@@ -293,8 +298,8 @@ impl Node {
                 debug!("TCP connection established to {}", addr);
                 
                 // Perform handshake
-                match self.peer_manager.perform_handshake(&mut stream, false).await {
-                    Ok((actual_peer_id, protocol_version)) => {
+                match self.peer_manager.perform_handshake(&mut stream, false, Some(&self.encryption_manager), Some(&self.session_keys)).await {
+                    Ok((actual_peer_id, protocol_version, _peer_public_key)) => {
                         info!("Connected to peer {} (ID: {}, protocol: {})", addr, actual_peer_id, protocol_version);
                         
                         // Update peer info with actual ID from handshake
@@ -361,11 +366,9 @@ impl Node {
                     let ping = Message::Ping {
                         timestamp: chrono::Utc::now().timestamp(),
                     };
-                    let frame = Frame::from_message(&ping)
-                        .map_err(|e| MeshError::Protocol(format!("Failed to serialize ping: {}", e)))?;
-                    stream.write_all(&frame.to_bytes())
-                        .await
-                        .map_err(|e| MeshError::Io(e))?;
+                    if let Err(e) = self.send_message(&mut stream, &peer_id, &ping).await {
+                        warn!("Failed to send ping: {}", e);
+                    }
                     continue;
                 }
             }
@@ -378,8 +381,35 @@ impl Node {
                 .map_err(|_| MeshError::Timeout("Read timeout".to_string()))?
                 .map_err(|e| MeshError::Io(e))?;
             
+            // Try to decrypt if we have a session key and payload looks encrypted (>= 12 bytes)
+            let decrypted_payload = if let Some(session_key) = self.session_keys.get_session_key(&peer_id).await {
+                if payload.len() >= 12 {
+                    // Try to decrypt (nonce is first 12 bytes)
+                    let (nonce, encrypted_data) = payload.split_at(12);
+                    match crate::p2p::encryption::EncryptionManager::decrypt_aes(
+                        encrypted_data,
+                        &session_key.key,
+                        nonce
+                    ) {
+                        Ok(decrypted) => {
+                            debug!("Decrypted message from {}", peer_id);
+                            decrypted
+                        }
+                        Err(e) => {
+                            // If decryption fails, try parsing as plain message
+                            debug!("Decryption failed for {}: {}, trying plain", peer_id, e);
+                            payload
+                        }
+                    }
+                } else {
+                    payload
+                }
+            } else {
+                payload
+            };
+            
             // Parse message
-            let message = Message::from_bytes(&payload)
+            let message = Message::from_bytes(&decrypted_payload)
                 .map_err(|e| MeshError::Protocol(format!("Invalid message: {}", e)))?;
             
             // Update last seen
@@ -390,11 +420,9 @@ impl Node {
                 Message::Ping { timestamp } => {
                     debug!("Received ping from {}", peer_id);
                     let pong = Message::Pong { timestamp };
-                    let frame = Frame::from_message(&pong)
-                        .map_err(|e| MeshError::Protocol(format!("Failed to serialize pong: {}", e)))?;
-                    stream.write_all(&frame.to_bytes())
-                        .await
-                        .map_err(|e| MeshError::Io(e))?;
+                    if let Err(e) = self.send_message(&mut stream, &peer_id, &pong).await {
+                        warn!("Failed to send pong: {}", e);
+                    }
                 }
                 Message::Pong { .. } => {
                     debug!("Received pong from {}", peer_id);
@@ -420,6 +448,55 @@ impl Node {
                 }
             }
         }
+        
+        Ok(())
+    }
+    
+    /// Send a message to a peer (encrypts if session key is available)
+    async fn send_message(
+        &self,
+        stream: &mut TcpStream,
+        peer_id: &str,
+        message: &Message,
+    ) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+        
+        // Serialize message
+        let plain_payload = message.to_bytes()
+            .map_err(|e| MeshError::Protocol(format!("Failed to serialize message: {}", e)))?;
+        
+        // Encrypt if we have a session key
+        let frame = if let Some(session_key) = self.session_keys.get_session_key(peer_id).await {
+            // Generate new nonce for this message
+            use aes_gcm::aead::{AeadCore, OsRng};
+            let nonce = aes_gcm::Aes256Gcm::generate_nonce(&mut OsRng);
+            let nonce_bytes = nonce.as_slice().to_vec();
+            
+            // Encrypt payload
+            match crate::p2p::encryption::EncryptionManager::encrypt_aes(
+                &plain_payload,
+                &session_key.key,
+                &nonce_bytes
+            ) {
+                Ok(encrypted_data) => {
+                    Frame::from_encrypted(&nonce_bytes, &encrypted_data)
+                }
+                Err(e) => {
+                    warn!("Failed to encrypt message to {}: {}, sending plain", peer_id, e);
+                    Frame::from_message(message)
+                        .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
+                }
+            }
+        } else {
+            // No session key, send plain
+            Frame::from_message(message)
+                .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
+        };
+        
+        // Send frame
+        stream.write_all(&frame.to_bytes())
+            .await
+            .map_err(|e| MeshError::Io(e))?;
         
         Ok(())
     }
@@ -480,6 +557,7 @@ impl Clone for Node {
             peer_manager: self.peer_manager.clone(),
             event_emitter: self.event_emitter.clone(),
             encryption_manager: self.encryption_manager.clone(),
+            session_keys: self.session_keys.clone(),
             router: self.router.clone(),
             shutdown: self.shutdown.clone(),
         }

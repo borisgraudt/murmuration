@@ -180,7 +180,9 @@ impl PeerManager {
         &self,
         stream: &mut TcpStream,
         is_incoming: bool,
-    ) -> Result<(String, u8)> {
+        encryption_manager: Option<&crate::p2p::encryption::EncryptionManager>,
+        session_keys: Option<&crate::p2p::encryption::SessionKeyManager>,
+    ) -> Result<(String, u8, Option<String>)> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use crate::p2p::protocol::Frame;
         
@@ -202,23 +204,59 @@ impl PeerManager {
             let handshake = Message::from_bytes(&payload)
                 .map_err(|e| MeshError::Protocol(format!("Invalid handshake: {}", e)))?;
             
-            let (node_id, protocol_version) = match handshake {
-                Message::Handshake { node_id, protocol_version, .. } => {
+            let (node_id, protocol_version, peer_public_key) = match handshake {
+                Message::Handshake { node_id, protocol_version, public_key, .. } => {
                     if protocol_version != PROTOCOL_VERSION {
                         return Err(MeshError::Protocol(format!(
                             "Protocol version mismatch: expected {}, got {}",
                             PROTOCOL_VERSION, protocol_version
                         )));
                     }
-                    (node_id, protocol_version)
+                    (node_id, protocol_version, public_key)
                 }
                 _ => return Err(MeshError::Protocol("Expected handshake message".to_string())),
+            };
+            
+            // Generate and encrypt session key if encryption is enabled
+            let (encrypted_session_key, nonce, our_public_key) = if let (Some(enc_mgr), Some(sess_keys)) = (encryption_manager, session_keys) {
+                if let Some(ref peer_pub_key_str) = peer_public_key {
+                    // Parse peer's public key
+                    if let Ok(peer_pub_key) = crate::p2p::encryption::EncryptionManager::parse_public_key(peer_pub_key_str) {
+                        // Generate session key
+                        let (aes_key, aes_nonce) = crate::p2p::encryption::EncryptionManager::generate_session_key();
+                        
+                        // Encrypt session key with peer's public key
+                        if let Ok(enc_key) = enc_mgr.encrypt_with_public_key(aes_key.as_slice(), &peer_pub_key) {
+                            // Store session key for this peer
+                            sess_keys.set_session_key(node_id.clone(), aes_key, aes_nonce.clone()).await;
+                            
+                            // Get our public key
+                            if let Ok(our_pub_key_str) = enc_mgr.get_public_key_string() {
+                                (Some(enc_key), Some(aes_nonce), Some(our_pub_key_str))
+                            } else {
+                                (None, None, None)
+                            }
+                        } else {
+                            (None, None, None)
+                        }
+                    } else {
+                        (None, None, None)
+                    }
+                } else {
+                    // No encryption
+                    (None, None, None)
+                }
+            } else {
+                (None, None, None)
             };
             
             // Send handshake ack
             let ack = Message::HandshakeAck {
                 node_id: self.our_node_id.clone(),
                 protocol_version: PROTOCOL_VERSION,
+                public_key: our_public_key,
+                encrypted_session_key,
+                nonce,
             };
             let frame = Frame::from_message(&ack)
                 .map_err(|e| MeshError::Protocol(format!("Failed to serialize ack: {}", e)))?;
@@ -226,13 +264,21 @@ impl PeerManager {
                 .await
                 .map_err(|e| MeshError::Io(e))?;
             
-            Ok((node_id, protocol_version))
+            Ok((node_id, protocol_version, peer_public_key))
         } else {
+            // Get our public key if encryption is enabled
+            let our_public_key = if let Some(enc_mgr) = encryption_manager {
+                enc_mgr.get_public_key_string().ok()
+            } else {
+                None
+            };
+            
             // Send handshake
             let handshake = Message::Handshake {
                 node_id: self.our_node_id.clone(),
                 protocol_version: PROTOCOL_VERSION,
                 listen_port: self.our_listen_port,
+                public_key: our_public_key,
             };
             let frame = Frame::from_message(&handshake)
                 .map_err(|e| MeshError::Protocol(format!("Failed to serialize handshake: {}", e)))?;
@@ -257,20 +303,31 @@ impl PeerManager {
             let ack = Message::from_bytes(&payload)
                 .map_err(|e| MeshError::Protocol(format!("Invalid handshake ack: {}", e)))?;
             
-            let (node_id, protocol_version) = match ack {
-                Message::HandshakeAck { node_id, protocol_version } => {
+            let (node_id, protocol_version, peer_public_key) = match ack {
+                Message::HandshakeAck { node_id, protocol_version, public_key, encrypted_session_key, nonce } => {
                     if protocol_version != PROTOCOL_VERSION {
                         return Err(MeshError::Protocol(format!(
                             "Protocol version mismatch: expected {}, got {}",
                             PROTOCOL_VERSION, protocol_version
                         )));
                     }
-                    (node_id, protocol_version)
+                    
+                    // Decrypt and store session key if encryption is enabled
+                    if let (Some(enc_mgr), Some(sess_keys), Some(enc_key), Some(nonce_bytes)) = 
+                        (encryption_manager, session_keys, encrypted_session_key, nonce) {
+                        // Decrypt session key with our private key
+                        if let Ok(aes_key_bytes) = enc_mgr.decrypt_with_private_key(&enc_key).await {
+                            let aes_key = aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&aes_key_bytes);
+                            sess_keys.set_session_key(node_id.clone(), aes_key.clone(), nonce_bytes.clone()).await;
+                        }
+                    }
+                    
+                    (node_id, protocol_version, public_key)
                 }
                 _ => return Err(MeshError::Protocol("Expected handshake ack".to_string())),
             };
             
-            Ok((node_id, protocol_version))
+            Ok((node_id, protocol_version, peer_public_key))
         }
     }
 }
