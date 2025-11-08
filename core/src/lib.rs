@@ -5,7 +5,10 @@ pub mod config;
 ///
 /// A production-grade peer-to-peer networking library with protocol versioning,
 /// connection management, AI routing, and graceful shutdown.
+#[cfg(not(doctest))]
 pub mod error;
+#[cfg(doctest)]
+mod error;
 pub mod node;
 pub mod p2p;
 pub mod utils;

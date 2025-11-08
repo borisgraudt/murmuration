@@ -1,10 +1,11 @@
 /// Error types for the P2P network
+use std::io;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum MeshError {
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
