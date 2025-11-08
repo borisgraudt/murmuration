@@ -68,20 +68,25 @@ jobs:
       - name: Run tests
         working-directory: core
         run: cargo test --verbose
-      - name: Check binaries exist
+      - name: Check binaries exist (Unix)
+        if: runner.os != 'Windows'
         working-directory: core
         shell: bash
         run: |
-          OS="${{ runner.os }}"
-          if [ "$OS" == "Windows" ]; then
-            test -f target/release/core.exe || exit 1
-            test -f target/release/viz.exe || exit 1
-            test -f target/release/cli.exe || exit 1
-          else
-            test -f target/release/core || exit 1
-            test -f target/release/viz || exit 1
-            test -f target/release/cli || exit 1
-          fi
+          test -f target/release/core || (echo "core binary not found" && exit 1)
+          test -f target/release/viz || (echo "viz binary not found" && exit 1)
+          test -f target/release/cli || (echo "cli binary not found" && exit 1)
+          echo "All binaries found successfully"
+      
+      - name: Check binaries exist (Windows)
+        if: runner.os == 'Windows'
+        working-directory: core
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "target/release/core.exe")) { Write-Error "core.exe not found"; exit 1 }
+          if (-not (Test-Path "target/release/viz.exe")) { Write-Error "viz.exe not found"; exit 1 }
+          if (-not (Test-Path "target/release/cli.exe")) { Write-Error "cli.exe not found"; exit 1 }
+          Write-Host "All binaries found successfully"
 
   # Build documentation
   docs:
