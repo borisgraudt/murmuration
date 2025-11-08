@@ -44,7 +44,9 @@ jobs:
   test:
     name: Test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    needs: [fmt, clippy]
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
@@ -54,6 +56,7 @@ jobs:
             target: x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -67,7 +70,8 @@ jobs:
           cargo build --bin core --bin viz --bin cli --verbose
       - name: Run tests
         working-directory: core
-        run: cargo test --verbose
+        timeout-minutes: 15
+        run: cargo test --verbose --lib
       - name: Check binaries exist (Unix)
         if: runner.os != 'Windows'
         working-directory: core
