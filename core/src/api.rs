@@ -56,7 +56,7 @@ impl ApiResponse {
 pub async fn start_api_server(node: Node, api_addr: SocketAddr) -> Result<()> {
     let listener = TcpListener::bind(&api_addr)
         .await
-        .map_err(|e| MeshError::Io(e))?;
+        .map_err(MeshError::Io)?;
 
     info!("API server listening on {}", api_addr);
 
@@ -109,11 +109,11 @@ async fn handle_api_client(mut stream: TcpStream, node: Node) -> Result<()> {
                 writer
                     .write_all(json.as_bytes())
                     .await
-                    .map_err(|e| MeshError::Io(e))?;
+                    .map_err(MeshError::Io)?;
                 writer
                     .write_all(b"\n")
                     .await
-                    .map_err(|e| MeshError::Io(e))?;
+                    .map_err(MeshError::Io)?;
             }
             Err(e) => {
                 error!("Error reading from API client: {}", e);

@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
-use tokio::time::timeout;
 // Tracing imports removed - using in node.rs instead
 
 /// Connection state of a peer
@@ -84,6 +83,7 @@ impl PeerInfo {
 pub struct PeerManager {
     peers: Arc<RwLock<std::collections::HashMap<String, PeerInfo>>>,
     our_node_id: String,
+    #[allow(dead_code)]
     our_listen_port: u16,
 }
 
@@ -190,12 +190,11 @@ impl PeerManager {
     pub async fn perform_handshake(
         &self,
         stream: &mut TcpStream,
-        is_outgoing: bool,
+        _is_outgoing: bool,
         encryption_manager: Option<&crate::p2p::encryption::EncryptionManager>,
         session_keys: Option<&crate::p2p::encryption::SessionKeyManager>,
     ) -> Result<(String, u8, Option<rsa::RsaPublicKey>)> {
         use crate::p2p::encryption::EncryptionManager;
-        use crate::p2p::protocol::Frame;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         // Read handshake
@@ -254,6 +253,7 @@ impl PeerManager {
                     let (aes_key, nonce_bytes) = EncryptionManager::generate_session_key();
 
                     // Encrypt session key with peer's public key
+                    #[allow(deprecated)] // GenericArray::as_slice is deprecated
                     let encrypted_key =
                         enc_mgr.encrypt_with_public_key(aes_key.as_slice(), peer_pub_key)?;
 
@@ -280,7 +280,7 @@ impl PeerManager {
 
         let ack_bytes = ack_message
             .to_bytes()
-            .map_err(|e| MeshError::Serialization(e))?;
+            .map_err(MeshError::Serialization)?;
         let len = ack_bytes.len() as u32;
 
         stream

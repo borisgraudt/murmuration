@@ -1,6 +1,7 @@
 /// Encryption module for secure P2P communication
 /// Implements RSA for key exchange and AES-GCM for message encryption
 use crate::error::{MeshError, Result};
+#[allow(deprecated)] // aes-gcm 0.10 uses deprecated GenericArray from generic-array 0.14
 use aes_gcm::{
     aead::{generic_array::GenericArray, Aead, AeadCore, KeyInit, OsRng},
     Aes256Gcm, Key,
@@ -77,6 +78,7 @@ impl EncryptionManager {
     }
 
     /// Generate AES session key
+    #[allow(deprecated)] // GenericArray::as_slice is deprecated
     pub fn generate_session_key() -> (Key<Aes256Gcm>, Vec<u8>) {
         let key = Aes256Gcm::generate_key(&mut OsRng);
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
@@ -84,6 +86,7 @@ impl EncryptionManager {
     }
 
     /// Encrypt message with AES-GCM
+    #[allow(deprecated)] // GenericArray is deprecated in aes-gcm 0.10
     pub fn encrypt_aes(data: &[u8], key: &Key<Aes256Gcm>, nonce: &[u8]) -> Result<Vec<u8>> {
         if nonce.len() != 12 {
             return Err(MeshError::Peer("Nonce must be 12 bytes".to_string()));
@@ -96,6 +99,7 @@ impl EncryptionManager {
     }
 
     /// Decrypt message with AES-GCM
+    #[allow(deprecated)] // GenericArray is deprecated in aes-gcm 0.10
     pub fn decrypt_aes(encrypted: &[u8], key: &Key<Aes256Gcm>, nonce: &[u8]) -> Result<Vec<u8>> {
         if nonce.len() != 12 {
             return Err(MeshError::Peer("Nonce must be 12 bytes".to_string()));
@@ -120,6 +124,7 @@ impl EncryptionManager {
         let encrypted_data = Self::encrypt_aes(data, &aes_key, &nonce)?;
 
         // Encrypt AES key with RSA (AES-256 key is 32 bytes, fits in RSA-2048)
+        #[allow(deprecated)] // GenericArray::as_slice is deprecated
         let aes_key_bytes = aes_key.as_slice();
         let encrypted_key = self.encrypt_with_public_key(aes_key_bytes, peer_public_key)?;
 
@@ -136,6 +141,7 @@ impl EncryptionManager {
         let aes_key_bytes = self
             .decrypt_with_private_key(&encrypted.encrypted_key)
             .await?;
+        #[allow(deprecated)] // GenericArray::from_slice is deprecated
         let aes_key = Key::<Aes256Gcm>::from_slice(&aes_key_bytes);
 
         // Decrypt data with AES
@@ -166,7 +172,7 @@ impl EncryptedMessage {
     }
 
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
-        serde_json::from_slice(data).map_err(|e| MeshError::Serialization(e))
+        serde_json::from_slice(data).map_err(MeshError::Serialization)
     }
 }
 
@@ -286,6 +292,12 @@ pub struct SessionKeyManager {
     sessions: Arc<RwLock<std::collections::HashMap<String, SessionKey>>>,
 }
 
+impl Default for SessionKeyManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionKeyManager {
     /// Create a new session key manager
     pub fn new() -> Self {
@@ -381,7 +393,7 @@ mod tests {
 
         // Store key
         manager
-            .set_session_key("peer1".to_string(), key.clone(), nonce.clone())
+            .set_session_key("peer1".to_string(), key, nonce.clone())
             .await;
 
         // Retrieve key

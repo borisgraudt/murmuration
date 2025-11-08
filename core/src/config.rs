@@ -53,7 +53,7 @@ impl Config {
         if args.len() < 2 {
             return Err(MeshError::Config(format!(
                 "Usage: {} <port> [peer1] [peer2] ...",
-                args.get(0).unwrap_or(&"meshlink".to_string())
+                args.first().unwrap_or(&"meshlink".to_string())
             )));
         }
 

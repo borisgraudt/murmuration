@@ -4,6 +4,7 @@ use crate::error::{MeshError, Result};
 use crate::p2p::protocol::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
@@ -30,9 +31,11 @@ impl ElysiumAddress {
         }
     }
 
-    /// Convert to string format
-    pub fn to_string(&self) -> String {
-        format!("ely://{}", self.node_id)
+}
+
+impl fmt::Display for ElysiumAddress {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ely://{}", self.node_id)
     }
 }
 

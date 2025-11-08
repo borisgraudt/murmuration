@@ -43,9 +43,7 @@ impl PeerStats {
         };
 
         // Combine trust, packet loss, and error rate
-        (self.trust_score * (1.0 - self.packet_loss) * (1.0 - error_rate))
-            .max(0.0)
-            .min(1.0)
+        (self.trust_score * (1.0 - self.packet_loss) * (1.0 - error_rate)).clamp(0.0, 1.0)
     }
 }
 

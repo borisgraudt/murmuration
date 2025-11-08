@@ -176,7 +176,7 @@ impl Node {
     async fn run_listener(&self) -> Result<()> {
         let listener = TcpListener::bind(self.config.listen_addr)
             .await
-            .map_err(|e| MeshError::Io(e))?;
+            .map_err(MeshError::Io)?;
 
         info!(
             "Listening for incoming connections on {}",
@@ -558,7 +558,7 @@ impl Node {
             timeout(Duration::from_secs(30), stream.read_exact(&mut payload))
                 .await
                 .map_err(|_| MeshError::Timeout("Read timeout".to_string()))?
-                .map_err(|e| MeshError::Io(e))?;
+                .map_err(MeshError::Io)?;
 
             // Try to decrypt if we have a session key and payload looks encrypted (>= 12 bytes)
             let decrypted_payload =
@@ -665,6 +665,7 @@ impl Node {
             // Generate new nonce for this message
             use aes_gcm::aead::{AeadCore, OsRng};
             let nonce = aes_gcm::Aes256Gcm::generate_nonce(&mut OsRng);
+            #[allow(deprecated)] // GenericArray::as_slice is deprecated
             let nonce_bytes = nonce.as_slice().to_vec();
 
             // Encrypt payload
@@ -694,7 +695,7 @@ impl Node {
         stream
             .write_all(&frame.to_bytes())
             .await
-            .map_err(|e| MeshError::Io(e))?;
+            .map_err(MeshError::Io)?;
 
         Ok(())
     }
