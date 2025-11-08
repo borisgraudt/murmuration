@@ -72,7 +72,7 @@ jobs:
         working-directory: core
         shell: bash
         run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          if [ "${{ runner.os }}" == "Windows" ]; then
             test -f target/release/core.exe || exit 1
             test -f target/release/viz.exe || exit 1
             test -f target/release/cli.exe || exit 1

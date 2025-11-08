@@ -506,10 +506,7 @@ fn run_app<B: ratatui::backend::Backend>(
                 for row in &grid {
                     let mut line = Vec::new();
                     for &(ch, style) in row {
-                        line.push(Span::styled(
-                            ch.to_string(),
-                            style.unwrap_or_default(),
-                        ));
+                        line.push(Span::styled(ch.to_string(), style.unwrap_or_default()));
                     }
                     lines.push(ratatui::text::Line::from(line));
                 }
