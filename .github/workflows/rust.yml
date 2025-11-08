@@ -21,6 +21,7 @@ jobs:
         with:
           components: rustfmt
       - name: Check formatting
+        working-directory: core
         run: cargo fmt --all -- --check
 
   # Lint with clippy
@@ -36,7 +37,8 @@ jobs:
         with:
           workspaces: "core"
       - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        working-directory: core
+        run: cargo clippy --all-targets -- -D warnings
 
   # Build and test on multiple platforms
   test:
@@ -59,12 +61,15 @@ jobs:
         with:
           workspaces: "core"
       - name: Build all binaries
+        working-directory: core
         run: |
-          cargo build --workspace --release --verbose
-          cargo build --workspace --bin core --bin viz --bin cli --verbose
+          cargo build --release --verbose
+          cargo build --bin core --bin viz --bin cli --verbose
       - name: Run tests
-        run: cargo test --workspace --verbose
+        working-directory: core
+        run: cargo test --verbose
       - name: Check binaries exist
+        working-directory: core
         shell: bash
         run: |
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
@@ -88,6 +93,8 @@ jobs:
         with:
           workspaces: "core"
       - name: Build docs
-        run: cargo doc --workspace --no-deps --all-features
+        working-directory: core
+        run: cargo doc --no-deps --all-features
       - name: Check docs
-        run: cargo doc --workspace --no-deps --all-features --document-private-items
+        working-directory: core
+        run: cargo doc --no-deps --all-features --document-private-items
