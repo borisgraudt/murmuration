@@ -3,13 +3,16 @@ use crate::config::Config;
 use crate::error::{MeshError, Result};
 use crate::p2p::peer::{ConnectionState, PeerManager};
 use crate::p2p::protocol::{Frame, Message};
+use crate::p2p::discovery::DiscoveryManager;
+use crate::p2p::routing::{Router, MeshMessage};
+use crate::p2p::encryption::EncryptionManager;
 use crate::utils::event_emitter::EventEmitter;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::signal;
-use tokio::sync::RwLock;
+use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval, sleep, timeout};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -28,26 +31,36 @@ pub struct Node {
     /// Event emitter for visualization
     event_emitter: EventEmitter,
     
+    /// Encryption manager
+    encryption_manager: EncryptionManager,
+    
+    /// Router for mesh messages
+    router: Router,
+    
     /// Shutdown signal
     shutdown: Arc<RwLock<bool>>,
 }
 
 impl Node {
     /// Create a new node
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config) -> Result<Self> {
         let id = Uuid::new_v4().to_string();
         let peer_manager = PeerManager::new(id.clone(), config.listen_addr.port());
         let event_emitter = EventEmitter::new(id.clone());
+        let encryption_manager = EncryptionManager::new()?;
+        let router = Router::new(id.clone());
         
         info!("Created new node with ID: {}", id);
         
-        Self {
+        Ok(Self {
             id,
             config,
             peer_manager,
             event_emitter,
+            encryption_manager,
+            router,
             shutdown: Arc::new(RwLock::new(false)),
-        }
+        })
     }
     
     /// Start the node
@@ -88,6 +101,12 @@ impl Node {
             tokio::spawn(async move { node.run_keepalive().await })
         };
         
+        // Start discovery
+        let discovery_handle = {
+            let node = self.clone();
+            tokio::spawn(async move { node.run_discovery().await })
+        };
+        
         // Wait for shutdown signal
         self.wait_for_shutdown().await;
         
@@ -101,6 +120,7 @@ impl Node {
             connector_handle,
             heartbeat_handle,
             keepalive_handle,
+            discovery_handle,
         );
         
         info!("Node stopped");
@@ -383,6 +403,14 @@ impl Node {
                     info!("Received data message {} from {}: {} bytes", message_id, peer_id, payload.len());
                     self.event_emitter.emit("message_received", Some(&peer_id)).await;
                 }
+                Message::MeshMessage { .. } => {
+                    // Handle mesh message routing
+                    if let Some(mesh_msg) = MeshMessage::from_protocol_message(&message) {
+                        if let Err(e) = self.handle_mesh_message(mesh_msg, &peer_id).await {
+                            warn!("Error handling mesh message: {}", e);
+                        }
+                    }
+                }
                 Message::Close { reason } => {
                     info!("Peer {} closed connection: {}", peer_id, reason);
                     break;
@@ -451,8 +479,99 @@ impl Clone for Node {
             config: self.config.clone(),
             peer_manager: self.peer_manager.clone(),
             event_emitter: self.event_emitter.clone(),
+            encryption_manager: self.encryption_manager.clone(),
+            router: self.router.clone(),
             shutdown: self.shutdown.clone(),
         }
+    }
+}
+
+impl Node {
+    /// Run discovery task
+    async fn run_discovery(&self) -> Result<()> {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        
+        let public_key = self.encryption_manager.get_public_key_string()?;
+        let discovery_port = self.config.listen_addr.port() + 1000; // Discovery on port + 1000
+        
+        let discovery_manager = DiscoveryManager::new(
+            self.id.clone(),
+            self.config.listen_addr.port(),
+            public_key,
+            discovery_port,
+            tx,
+        );
+        
+        // Start discovery in background
+        let discovery_handle = tokio::spawn(async move {
+            if let Err(e) = discovery_manager.start().await {
+                error!("Discovery error: {}", e);
+            }
+        });
+        
+        // Process discovered peers
+        while let Some((node_id, addr, public_key)) = rx.recv().await {
+            if *self.shutdown.read().await {
+                break;
+            }
+            
+            info!("Discovered peer {} at {}", node_id, addr);
+            self.peer_manager.add_peer(node_id.clone(), addr).await;
+            
+            // Try to connect if not already connected
+            let connected = self.peer_manager.get_connected_peers().await;
+            if !connected.iter().any(|p| p.node_id == node_id) {
+                let node = self.clone();
+                tokio::spawn(async move {
+                    node.connect_to_peer(node_id, addr).await;
+                });
+            }
+        }
+        
+        discovery_handle.abort();
+        Ok(())
+    }
+    
+    /// Handle incoming mesh message
+    async fn handle_mesh_message(&self, message: MeshMessage, from_peer: &str) -> Result<()> {
+        // Check if we should process this message
+        if !self.router.should_process(&message).await {
+            return Ok(());
+        }
+        
+        // Mark as seen
+        let message_id = message.message_id.clone();
+        self.router.mark_seen(&message_id).await;
+        
+        // Check if message is for us
+        if self.router.is_for_us(&message) {
+            info!("Received mesh message {} for us from {}", message_id, from_peer);
+            self.event_emitter.emit("mesh_message_received", Some(&message_id)).await;
+            // TODO: Deliver to application layer
+            return Ok(());
+        }
+        
+        // Forward to other peers (flooding)
+        let all_peers = self.peer_manager.get_all_peers().await;
+        let peer_ids: Vec<String> = all_peers.iter().map(|p| p.node_id.clone()).collect();
+        let forward_peers = self.router.get_forward_peers(&message, &peer_ids);
+        
+        if !forward_peers.is_empty() {
+            let forward_msg = self.router.prepare_for_forwarding(&message);
+            let _protocol_msg = forward_msg.to_protocol_message();
+            
+            // Forward to each peer
+            for peer_id in forward_peers {
+                if let Some(peer) = all_peers.iter().find(|p| p.node_id == peer_id) {
+                    if peer.state == ConnectionState::Connected {
+                        // TODO: Forward message via connection
+                        debug!("Would forward mesh message {} to {}", forward_msg.message_id, peer_id);
+                    }
+                }
+            }
+        }
+        
+        Ok(())
     }
 }
 

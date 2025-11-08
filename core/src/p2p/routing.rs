@@ -155,10 +155,11 @@ impl Router {
     }
 
     /// Prepare message for forwarding (decrement TTL, add to path)
-    pub fn prepare_for_forwarding(&self, mut message: MeshMessage) -> MeshMessage {
-        message.ttl = message.ttl.saturating_sub(1);
-        message.path.push(self.our_node_id.clone());
-        message
+    pub fn prepare_for_forwarding(&self, message: &MeshMessage) -> MeshMessage {
+        let mut forward_msg = message.clone();
+        forward_msg.ttl = forward_msg.ttl.saturating_sub(1);
+        forward_msg.path.push(self.our_node_id.clone());
+        forward_msg
     }
 
     /// Get list of peers to forward to (flooding: all except sender)
