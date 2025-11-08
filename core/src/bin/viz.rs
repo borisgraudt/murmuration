@@ -29,6 +29,7 @@ struct Link {
     a: usize, // index in nodes
     b: usize,
     pulse: u8, // 0 = no pulse, >0 = frames left to pulse
+    message_wave: Option<u8>, // Wave animation for message transmission (0-20)
 }
 
 #[derive(Debug, Clone)]
@@ -127,7 +128,7 @@ impl Graph {
             idx
         } else {
             let idx = self.links.len();
-            self.links.push(Link { a, b, pulse: 0 });
+            self.links.push(Link { a, b, pulse: 0, message_wave: None });
             idx
         }
     }
@@ -143,7 +144,7 @@ impl Graph {
             // Update last seen for this node
             self.node_last_seen.insert(node.to_string(), std::time::Instant::now());
             // Pulse this node
-            self.pulse_nodes.insert(node_idx, 5);
+            self.pulse_nodes.insert(node_idx, 8);
 
             if !peer.is_empty() {
                 let peer_idx = self.find_or_add_node(peer);
@@ -151,13 +152,28 @@ impl Graph {
                 self.node_last_seen.insert(peer.to_string(), std::time::Instant::now());
                 if event == "connected" {
                     let link_idx = self.add_link(node_idx, peer_idx);
-                    self.links[link_idx].pulse = 5;
+                    self.links[link_idx].pulse = 10; // Longer pulse for connections
                 } else if event == "disconnected" {
                     // Remove link when disconnected
                     if let Some(link_idx) = self.find_link(node_idx, peer_idx) {
                         self.links.remove(link_idx);
                     }
+                } else if event == "message_sent" || event == "message_received" || event == "mesh_message_received" {
+                    // Pulse link when message is sent/received
+                    if let Some(link_idx) = self.find_link(node_idx, peer_idx) {
+                        self.links[link_idx].pulse = 15; // Strong pulse for messages
+                        self.links[link_idx].message_wave = Some(0); // Start wave animation
+                    }
+                    // Also pulse both nodes
+                    self.pulse_nodes.insert(node_idx, 12);
+                    self.pulse_nodes.insert(peer_idx, 12);
                 }
+            } else if event == "message_sent" || event == "message_received" || event == "mesh_message_received" {
+                // Message event without peer (broadcast) - just pulse the node
+                self.pulse_nodes.insert(node_idx, 10);
+            } else if event == "heartbeat" {
+                // Heartbeat events - just update last seen, no pulse
+                // This prevents too many visual updates
             }
         }
     }
@@ -176,6 +192,13 @@ impl Graph {
         for l in self.links.iter_mut() {
             if l.pulse > 0 {
                 l.pulse -= 1;
+            }
+            // Update message wave animation
+            if let Some(wave) = &mut l.message_wave {
+                *wave += 1;
+                if *wave > 20 {
+                    l.message_wave = None; // End wave animation
+                }
             }
         }
     }
@@ -274,60 +297,92 @@ fn run_app<B: ratatui::backend::Backend>(
                     let sy = if y0 < y1 { 1 } else { -1 };
                     let mut err = dx - dy;
                     let mut first = true;
-                    let mut point_idx = 0;
                     let total_points = (dx + dy) as usize;
+                    let mut point_idx = 0;
+                    
+                    // Calculate line direction for proper character selection
+                    let is_vertical = dx == 0;
+                    let is_horizontal = dy == 0;
                     
                     loop {
                         if !first && (x0 >= 0 && x0 < grid_w as isize && y0 >= 0 && y0 < grid_h as isize) {
-                            // Pick char for direction - use clean, professional box-drawing
-                            // For neat appearance, use proper unicode box-drawing characters
-                            let ch = if dx == 0 {
-                                // Perfect vertical line
-                                '│'
-                            } else if dy == 0 {
-                                // Perfect horizontal line
-                                '─'
+                            // Choose character based on line direction - clean, straight lines
+                            let ch = if is_vertical {
+                                '│'  // Perfect vertical
+                            } else if is_horizontal {
+                                '─'  // Perfect horizontal
                             } else {
-                                // For diagonal lines, determine which direction to emphasize
-                                // Use cleaner diagonal characters that look more professional
-                                let ratio = dy as f32 / dx as f32;
-                                if ratio > 1.0 {
-                                    // More vertical - use vertical with slight angle
-                                    '│'
-                                } else if ratio < 0.5 {
-                                    // More horizontal - use horizontal with slight angle
-                                    '─'
+                                // Diagonal - use proper diagonal characters
+                                if sx == sy {
+                                    '╲'  // Top-left to bottom-right
                                 } else {
-                                    // True diagonal - use proper box-drawing diagonal
-                                    if sx == sy {
-                                        '╲'  // Top-left to bottom-right
-                                    } else {
-                                        '╱'  // Top-right to bottom-left
-                                    }
+                                    '╱'  // Top-right to bottom-left
                                 }
                             };
                             
-                            // Beautiful gradient effect based on position and pulse
-                            let (ch, style) = if link.pulse > 0 {
-                                // Active link with pulsing animation
-                                let pulse_phase = (g.animation_frame / 3) % 4;
-                                let pos_phase = (point_idx * 2 + pulse_phase as usize) % 8;
+                            // Calculate position along the line (0.0 to 1.0)
+                            let progress = if total_points > 0 {
+                                point_idx as f32 / total_points as f32
+                            } else {
+                                0.0
+                            };
+                            
+                            // Beautiful animation effects
+                            let (ch, style) = if let Some(wave_pos) = link.message_wave {
+                                // Message wave animation - flowing light effect
+                                let wave_progress = wave_pos as f32 / 20.0; // 0.0 to 1.0
+                                let distance_from_wave = (progress - wave_progress).abs();
                                 
-                                // Create flowing gradient effect
-                                let color = match pos_phase {
-                                    0 | 7 => Color::Cyan,
-                                    1 | 6 => Color::LightCyan,
-                                    2 | 5 => Color::Blue,
-                                    3 | 4 => Color::LightBlue,
-                                    _ => Color::Cyan,
+                                // Create glowing wave effect
+                                let intensity = if distance_from_wave < 0.15 {
+                                    // Near the wave - bright glow
+                                    let fade = 1.0 - (distance_from_wave / 0.15);
+                                    fade
+                                } else {
+                                    0.0
                                 };
                                 
-                                // Use thicker, brighter characters for active links
+                                // Color gradient for wave
+                                let base_color = if intensity > 0.7 {
+                                    Color::Cyan
+                                } else if intensity > 0.4 {
+                                    Color::LightCyan
+                                } else {
+                                    Color::Blue
+                                };
+                                
+                                // Use bright, thick characters for wave
+                                let wave_ch = match ch {
+                                    '│' => '┃',
+                                    '─' => '━',
+                                    '╲' => '╲',
+                                    '╱' => '╱',
+                                    _ => ch,
+                                };
+                                
+                                (wave_ch, Some(Style::default()
+                                    .fg(base_color)
+                                    .bg(Color::Black)
+                                    .add_modifier(ratatui::style::Modifier::BOLD)))
+                            } else if link.pulse > 0 {
+                                // Pulsing link - subtle glow
+                                let pulse_intensity = link.pulse as f32 / 15.0;
+                                let pulse_phase = (g.animation_frame as f32 * 0.1 + progress * 2.0) % (std::f32::consts::PI * 2.0);
+                                let brightness = (pulse_phase.sin() * 0.3 + 0.7) * pulse_intensity;
+                                
+                                let color = if brightness > 0.8 {
+                                    Color::LightCyan
+                                } else if brightness > 0.5 {
+                                    Color::Cyan
+                                } else {
+                                    Color::Blue
+                                };
+                                
                                 let active_ch = match ch {
-                                    '│' => '┃',  // Thick vertical
-                                    '─' => '━',  // Thick horizontal
-                                    '╲' => '╲',  // Diagonal (already smooth)
-                                    '╱' => '╱',  // Diagonal (already smooth)
+                                    '│' => '┃',
+                                    '─' => '━',
+                                    '╲' => '╲',
+                                    '╱' => '╱',
                                     _ => ch,
                                 };
                                 
@@ -336,16 +391,20 @@ fn run_app<B: ratatui::backend::Backend>(
                                     .bg(Color::Black)
                                     .add_modifier(ratatui::style::Modifier::BOLD)))
                             } else {
-                                // Inactive link - use subtle, clean gray
-                                // Make it look professional and neat
+                                // Inactive link - clean, subtle gray
                                 (ch, Some(Style::default()
                                     .fg(Color::DarkGray)
                                     .bg(Color::Black)))
                             };
                             
-                            // Only overwrite if cell is empty or has lower priority
+                            // Only overwrite if cell is empty or has higher priority (wave > pulse > normal)
                             let current = &grid[y0 as usize][x0 as usize];
-                            if current.0 == ' ' || link.pulse > 0 {
+                            let priority = if link.message_wave.is_some() { 3 }
+                                          else if link.pulse > 0 { 2 }
+                                          else { 1 };
+                            let current_priority = if current.0 == ' ' { 0 } else { 1 };
+                            
+                            if priority >= current_priority {
                                 grid[y0 as usize][x0 as usize] = (ch, style);
                             }
                         }
@@ -358,24 +417,33 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                 }
 
-                // Draw nodes with beautiful styling
+                // Draw nodes with beautiful styling and smooth animations
                 for (idx, node) in g.nodes.iter().enumerate() {
                     let pulse = g.pulse_nodes.get(&idx).copied().unwrap_or(0);
                     let (ch, style) = if pulse > 0 {
-                        // Pulsing node - create glow effect
-                        let pulse_phase = (g.animation_frame / 2) % 4;
-                        let color = match pulse_phase {
-                            0 => Color::Yellow,
-                            1 => Color::LightYellow,
-                            2 => Color::Yellow,
-                            _ => Color::White,
+                        // Pulsing node - create smooth glow effect
+                        let pulse_progress = pulse as f32 / 12.0; // Normalize to 0-1
+                        let animation_phase = (g.animation_frame as f32 * 0.15) % (std::f32::consts::PI * 2.0);
+                        let glow_intensity = (animation_phase.sin() * 0.4 + 0.6) * pulse_progress;
+                        
+                        // Smooth color transition
+                        let color = if glow_intensity > 0.8 {
+                            Color::Yellow
+                        } else if glow_intensity > 0.6 {
+                            Color::LightYellow
+                        } else if glow_intensity > 0.4 {
+                            Color::Cyan
+                        } else {
+                            Color::LightCyan
                         };
+                        
+                        // Use glowing character
                         ('◉', Some(Style::default()
                             .fg(color)
                             .bg(Color::Black)
                             .add_modifier(ratatui::style::Modifier::BOLD)))
                     } else {
-                        // Normal node
+                        // Normal node - clean white dot
                         ('●', Some(Style::default()
                             .fg(Color::White)
                             .bg(Color::Black)))
@@ -412,23 +480,62 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                 }
 
-                // Compose info area
+                // Compose info area with beautiful styling
                 let mut info_lines = vec![];
                 info_lines.push(ratatui::text::Line::from(vec![
-                    Span::styled(" Sci-Fi Mesh Visualization ", Style::default().fg(Color::Magenta)),
+                    Span::styled(" ⚡ MeshLink Network Visualization ⚡ ", 
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(ratatui::style::Modifier::BOLD)),
                 ]));
                 info_lines.push(ratatui::text::Line::from(vec![
-                    Span::raw(format!("Nodes: {}", g.nodes.len())),
+                    Span::styled("Nodes: ", Style::default().fg(Color::White)),
+                    Span::styled(format!("{}", g.nodes.len()), Style::default().fg(Color::Green).add_modifier(ratatui::style::Modifier::BOLD)),
                     Span::raw("   "),
-                    Span::raw(format!("Links: {}", g.links.len())),
+                    Span::styled("Links: ", Style::default().fg(Color::White)),
+                    Span::styled(format!("{}", g.links.len()), Style::default().fg(Color::Blue).add_modifier(ratatui::style::Modifier::BOLD)),
                     Span::raw("   "),
-                    Span::raw("Press q to quit"),
+                    Span::styled("Frame: ", Style::default().fg(Color::White)),
+                    Span::styled(format!("{}", g.animation_frame), Style::default().fg(Color::Magenta)),
                 ]));
                 if let Some(ev) = &g.last_event {
+                    // Parse and format event nicely
+                    let event_text = if let Ok(v) = serde_json::from_str::<serde_json::Value>(ev) {
+                        let node = v.get("node").and_then(|x| x.as_str()).unwrap_or("?");
+                        let event = v.get("event").and_then(|x| x.as_str()).unwrap_or("?");
+                        let peer = v.get("peer").and_then(|x| x.as_str()).unwrap_or("");
+                        
+                        let icon = match event {
+                            "connected" => "🔗",
+                            "disconnected" => "❌",
+                            "message_sent" => "📤",
+                            "message_received" => "📥",
+                            "mesh_message_received" => "🌐",
+                            _ => "⚡",
+                        };
+                        
+                        if !peer.is_empty() {
+                            format!("{} {} → {} ({})", icon, node, peer, event)
+                        } else {
+                            format!("{} {} ({})", icon, node, event)
+                        }
+                    } else {
+                        ev.clone()
+                    };
+                    
                     info_lines.push(ratatui::text::Line::from(vec![
-                        Span::styled(ev.clone(), Style::default().fg(Color::Yellow)),
+                        Span::styled("Last Event: ", Style::default().fg(Color::Gray)),
+                        Span::styled(event_text, 
+                            Style::default()
+                                .fg(Color::Yellow)
+                                .add_modifier(ratatui::style::Modifier::BOLD)),
                     ]));
                 }
+                info_lines.push(ratatui::text::Line::from(vec![
+                    Span::styled("Press ", Style::default().fg(Color::Gray)),
+                    Span::styled("q", Style::default().fg(Color::Red).add_modifier(ratatui::style::Modifier::BOLD)),
+                    Span::styled(" to quit", Style::default().fg(Color::Gray)),
+                ]));
 
                 // Layout: grid in most of the area, info at bottom
                 let vchunks = Layout::default()
@@ -444,14 +551,22 @@ fn run_app<B: ratatui::backend::Backend>(
                 let grid_area = vchunks[0];
                 let info_area = vchunks[1];
 
-                // Draw grid as Paragraph
+                // Draw grid as Paragraph with beautiful styling
                 let para = Paragraph::new(lines)
-                    .block(Block::default().title("Mesh Grid").borders(Borders::ALL));
+                    .block(Block::default()
+                        .title(" Network Topology ")
+                        .title_style(Style::default().fg(Color::Cyan).add_modifier(ratatui::style::Modifier::BOLD))
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::DarkGray)));
                 f.render_widget(para, grid_area);
 
-                // Draw info
+                // Draw info with beautiful styling
                 let info_para = Paragraph::new(info_lines)
-                    .block(Block::default().title("Info").borders(Borders::ALL));
+                    .block(Block::default()
+                        .title(" Status ")
+                        .title_style(Style::default().fg(Color::Green).add_modifier(ratatui::style::Modifier::BOLD))
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::DarkGray)));
                 f.render_widget(info_para, info_area);
             })?;
             last_redraw = Instant::now();

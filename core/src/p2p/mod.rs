@@ -3,11 +3,9 @@ pub mod protocol;
 pub mod peer;
 pub mod encryption;
 pub mod discovery;
-pub mod routing;
 
 pub use protocol::{Frame, Message, PROTOCOL_VERSION};
 pub use peer::{ConnectionState, PeerInfo, PeerManager};
 pub use encryption::{EncryptionManager, EncryptedMessage};
 pub use discovery::{DiscoveryManager, DiscoveryMessage};
-pub use routing::{Router, MeshMessage, ElysiumAddress};
 

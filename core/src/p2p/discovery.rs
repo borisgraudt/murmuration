@@ -1,7 +1,7 @@
 /// Peer discovery via UDP broadcast/multicast
-use crate::error::{MeshError, Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::mpsc;

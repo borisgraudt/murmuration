@@ -6,7 +6,7 @@ use aes_gcm::{
     Aes256Gcm, Key,
 };
 use base64::{engine::general_purpose, Engine as _};
-use rsa::{pkcs1v15::SigningKey, pkcs8::{DecodePublicKey, EncodePublicKey}, RsaPrivateKey, RsaPublicKey, pkcs1v15::VerifyingKey, pkcs1v15::EncryptingKey, pkcs1v15::DecryptingKey, Oaep};
+use rsa::{RsaPrivateKey, RsaPublicKey, Oaep};
 use sha2::Sha256;
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -278,5 +278,81 @@ impl SessionKeyManager {
     pub async fn remove_session_key(&self, peer_id: &str) {
         let mut sessions = self.sessions.write().await;
         sessions.remove(peer_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[tokio::test]
+    async fn test_encryption_manager_new() {
+        let manager = EncryptionManager::new().unwrap();
+        let pub_key_str = manager.get_public_key_string().unwrap();
+        assert!(!pub_key_str.is_empty());
+    }
+    
+    #[tokio::test]
+    async fn test_encryption_manager_public_key_serialization() {
+        let manager1 = EncryptionManager::new().unwrap();
+        let pub_key_str = manager1.get_public_key_string().unwrap();
+        
+        // Parse it back
+        let _parsed_key = EncryptionManager::parse_public_key(&pub_key_str).unwrap();
+        
+        // Should be valid
+        assert!(pub_key_str.len() > 100); // Base64 encoded DER should be substantial
+    }
+    
+    #[tokio::test]
+    async fn test_encryption_manager_encrypt_decrypt() {
+        let manager = EncryptionManager::new().unwrap();
+        let test_data = b"Hello, encrypted world!";
+        
+        // Encrypt with public key (simulate peer's public key)
+        let peer_manager = EncryptionManager::new().unwrap();
+        let peer_pub_key_str = peer_manager.get_public_key_string().unwrap();
+        let peer_pub_key = EncryptionManager::parse_public_key(&peer_pub_key_str).unwrap();
+        
+        // Encrypt data
+        let encrypted = manager.encrypt_with_public_key(test_data, &peer_pub_key).unwrap();
+        assert_ne!(encrypted, test_data);
+        
+        // Decrypt with peer's private key
+        let decrypted = peer_manager.decrypt_with_private_key(&encrypted).await.unwrap();
+        assert_eq!(decrypted, test_data);
+    }
+    
+    #[tokio::test]
+    async fn test_aes_encryption() {
+        let (key, nonce) = EncryptionManager::generate_session_key();
+        let test_data = b"Hello, AES encrypted!";
+        
+        // Encrypt
+        let encrypted = EncryptionManager::encrypt_aes(test_data, &key, &nonce).unwrap();
+        assert_ne!(encrypted, test_data);
+        
+        // Decrypt
+        let decrypted = EncryptionManager::decrypt_aes(&encrypted, &key, &nonce).unwrap();
+        assert_eq!(decrypted, test_data);
+    }
+    
+    #[tokio::test]
+    async fn test_session_key_manager() {
+        let manager = SessionKeyManager::new();
+        let (key, nonce) = EncryptionManager::generate_session_key();
+        
+        // Store key
+        manager.set_session_key("peer1".to_string(), key.clone(), nonce.clone()).await;
+        
+        // Retrieve key
+        let retrieved = manager.get_session_key("peer1").await;
+        assert!(retrieved.is_some());
+        let retrieved = retrieved.unwrap();
+        assert_eq!(retrieved.nonce, nonce);
+        
+        // Remove key
+        manager.remove_session_key("peer1").await;
+        assert!(manager.get_session_key("peer1").await.is_none());
     }
 }

@@ -1,134 +1,107 @@
+# MeshNet: Decentralized Encrypted Communication Protocol
 
-# **MeshNet: Decentralized Encrypted Communication Protocol**
-
-> **A fully peer-to-peer, censorship-resistant communication layer** designed for autonomy, privacy, and resilience — built with **Rust** and **Python AI integration**.
-
----
+A fully peer-to-peer, censorship-resistant communication layer designed for autonomy, privacy, and resilience — built with Rust and Python AI integration.
 
 ## 🧠 Vision
 
-Modern communication relies on centralized servers that can be censored, surveilled, or shut down.  
-**MeshNet** redefines this paradigm — creating a *fully decentralized, encrypted, and intelligent* communication protocol where nodes cooperate, route messages autonomously, and survive even under complete internet isolation.
+Modern communication relies on centralized servers that can be censored, surveilled, or shut down. MeshNet redefines this paradigm — creating a fully decentralized, encrypted, and intelligent communication protocol where nodes cooperate, route messages autonomously, and survive even under complete internet isolation.
 
-This project aims to explore how **AI-driven routing, cryptographic identity, and mesh topology** can merge into one resilient communication network.
-
----
-
-## ⚙️ Architecture Overview
+## ⚙️ Architecture
 
 ```
-
-meshnet/
-├── core/                   # Core Rust-based P2P protocol
-│   ├── Cargo.toml
-│   └── src/
-│       ├── main.rs
-│       ├── lib.rs
-│       ├── p2p/
-│       │   ├── discovery.rs
-│       │   ├── encryption.rs
-│       │   ├── peer.rs
-│       │   └── protocol.rs
-│       └── utils/
-│           ├── config.rs
-│           ├── crypto.rs
-│           └── logger.rs
-│
-├── docs/
-│   ├── architecture.md
-│   ├── protocol_spec.md
-│   └── roadmap.md
-│
-└── README.md
-
+meshnet_20_10/
+├── core/              # Rust P2P protocol with AI routing
+├── python_cli/        # CLI for testing
+├── web/               # Elysium Web (backend + frontend)
+├── sites/             # Decentralized mesh sites
+├── tests/             # Unit & integration tests
+├── scripts/           # Helper scripts
+└── docs/              # Documentation
 ```
 
----
+## 🚀 Quick Start
 
-## 🔒 Core Protocol Design
+### 1. Build Rust Core
 
-Each node in **MeshNet** acts as both a **client and a server**.  
-Connections are authenticated via asymmetric cryptography, and messages are routed through a *multi-hop encrypted mesh.*
-
-**Key principles:**
-- **No central authority** — every peer participates equally.
-- **End-to-end encryption** with rotating session keys.
-- **Adaptive routing** — AI chooses optimal relays based on latency and trust score.
-- **Resilience** — works in isolated LAN or Wi-Fi Direct environments.
-
-**Handshake example:**
-
+```bash
+cd core
+cargo build --release
 ```
 
-Node A ---> SYN + PubKeyA
-Node B ---> ACK + PubKeyB + Signature
-Node A ---> Encrypted session init
-Secure channel established 🔐
+### 2. Run a Node
 
+```bash
+# Terminal 1: Node 1
+cargo run --bin core 8080
+
+# Terminal 2: Node 2
+cargo run --bin core 8081 '127.0.0.1:8080'
+
+# Terminal 3: Visualization
+cargo run --bin viz
 ```
 
----
+### 3. Use CLI
 
-## 🧩 AI Integration
+```bash
+# Rust CLI
+cargo run --bin cli -- status
+cargo run --bin cli -- broadcast "Hello MeshNet!"
 
-The **AI router** monitors the network and:
-- Predicts node reliability and packet loss.
-- Learns from topology changes.
-- Suggests optimal paths in near real-time.
-
-Planned extension: integration of **federated learning** to allow each node to improve global routing without sharing raw data.
-
----
-
-## 🧰 CLI Interface
-
-The Python CLI provides a minimal shell-like environment:
-
+# Python CLI
+cd python_cli
+pip install -r requirements.txt
+python cli.py status
+python cli.py broadcast "Hello from Python!"
 ```
 
-meshnet> connect peer123@192.168.1.12
-meshnet> send "hello world"
-meshnet> peers
-meshnet> status
+### 4. Run Web Interface
 
+```bash
+# Backend
+cd web/backend
+pip install fastapi uvicorn
+python app.py
+
+# Open browser
+open http://localhost:8000
 ```
 
-You can chat, monitor routes, and even deploy custom modules for testing encryption or routing.
+## 🔒 Features
 
----
+- **P2P Networking**: Fully decentralized, no central servers
+- **Encryption**: RSA key exchange + AES-GCM session encryption
+- **AI Routing**: Intelligent message routing based on latency, uptime, and trust
+- **Peer Discovery**: Automatic LAN/Wi-Fi peer discovery
+- **Mesh Sites**: Decentralized websites hosted on the network
+- **Web Dashboard**: Real-time network visualization and chat
 
-## 🧪 Future Goals
+## 📚 Documentation
 
-- 🌍 **Quantum-resistant encryption** (NTRU or Kyber)  
-- 🧩 **Federated routing optimization**  
-- 🔌 **Offline mesh bootstrap via Bluetooth or LoRa**  
-- 🧱 **Full self-healing topology**  
+See `docs/` directory for:
+- `architecture.md` - System architecture
+- `protocol_spec.md` - Protocol specification
+- `ai_routing.md` - AI routing algorithm
+- `web_spec.md` - Elysium Web specification
+- `roadmap.md` - Development roadmap
 
----
+## 🧪 Testing
 
-## 💡 Research Impact
+```bash
+# Run Rust tests
+cd core
+cargo test
 
-This project demonstrates:
-- Real-world application of **distributed systems** and **cryptography**.
-- Practical design of a **protocol stack** from scratch.
-- Integration of **machine learning** into network routing.
+# Run Python CLI tests
+cd python_cli
+python -m pytest tests/
+```
 
-**Potential applications:**
-- Emergency communication networks.  
-- Encrypted IoT swarms.  
-- Decentralized cloud foundations.
-
----
-
-## 🧬 Credits
-
-**Protocol & Cryptography:** Boris Graudt  
-**CLI & AI Systems:** Ivan Shatalov  
-
-Built for research and innovation — *inspired by autonomy, resilience, and freedom.*
-
----
-
-## 📚 License
+## 📝 License
 
 MIT License © 2025
+
+## 🤝 Contributing
+
+This is a research project. Contributions welcome!
+

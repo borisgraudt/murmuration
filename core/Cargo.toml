@@ -4,6 +4,20 @@ version = "0.1.0"
 edition = "2021"
 default-run = "core"
 
+[workspace]
+
+[[bin]]
+name = "core"
+path = "src/main.rs"
+
+[[bin]]
+name = "viz"
+path = "src/bin/viz.rs"
+
+[[bin]]
+name = "cli"
+path = "src/bin/cli.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

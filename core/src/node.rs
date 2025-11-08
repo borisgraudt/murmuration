@@ -4,7 +4,7 @@ use crate::error::{MeshError, Result};
 use crate::p2p::peer::{ConnectionState, PeerManager};
 use crate::p2p::protocol::{Frame, Message};
 use crate::p2p::discovery::DiscoveryManager;
-use crate::p2p::routing::{Router, MeshMessage};
+use crate::ai::router::{Router, MeshMessage};
 use crate::p2p::encryption::{EncryptionManager, SessionKeyManager};
 use crate::utils::event_emitter::EventEmitter;
 use std::net::SocketAddr;
@@ -112,6 +112,18 @@ impl Node {
             tokio::spawn(async move { node.run_discovery().await })
         };
         
+        // Start API server for CLI (on port 9000 + listen_port to avoid conflicts)
+        let api_handle = {
+            let node = self.clone();
+            let api_port = 9000 + self.config.listen_addr.port();
+            tokio::spawn(async move {
+                let api_addr: SocketAddr = format!("127.0.0.1:{}", api_port).parse().unwrap();
+                if let Err(e) = crate::api::start_api_server(node, api_addr).await {
+                    error!("API server error: {}", e);
+                }
+            })
+        };
+        
         // Wait for shutdown signal
         self.wait_for_shutdown().await;
         
@@ -126,6 +138,7 @@ impl Node {
             heartbeat_handle,
             keepalive_handle,
             discovery_handle,
+            api_handle,
         );
         
         info!("Node stopped");
@@ -176,6 +189,7 @@ impl Node {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, addr)) => {
+                            info!("Accepted TCP connection from {}", addr);
                             let node = self.clone();
                             tokio::spawn(async move {
                                 if let Err(e) = node.handle_incoming_connection(stream, addr).await {
@@ -200,10 +214,46 @@ impl Node {
     
     /// Handle incoming connection
     async fn handle_incoming_connection(&self, mut stream: TcpStream, addr: SocketAddr) -> Result<()> {
-        debug!("Incoming connection from {}", addr);
+        info!("Incoming connection from {} (source port: {})", addr, addr.port());
+        
+        // Check if we're already connecting to this address - if so, reject incoming
+        // Note: addr is the source address, which may be different from the peer's listen address
+        let all_peers = self.peer_manager.get_all_peers().await;
+        debug!("Checking {} known peers for address {}", all_peers.len(), addr);
+        if let Some(existing_peer) = all_peers.iter().find(|p| p.address == addr) {
+            if existing_peer.state == ConnectionState::Connecting || existing_peer.state == ConnectionState::Handshaking {
+                info!("Rejecting incoming connection from {} - we're already connecting to it (state: {:?})", addr, existing_peer.state);
+                // Close stream gracefully before dropping
+                use tokio::io::AsyncWriteExt;
+                let _ = stream.shutdown().await;
+                drop(stream);
+                return Ok(()); // Silently close - we'll use our outgoing connection
+            }
+            if existing_peer.state == ConnectionState::Connected {
+                info!("Rejecting incoming connection from {} - already connected", addr);
+                // Close stream gracefully before dropping
+                use tokio::io::AsyncWriteExt;
+                let _ = stream.shutdown().await;
+                drop(stream);
+                return Ok(()); // Already connected
+            }
+            debug!("Found existing peer {} with state {:?}, accepting connection", existing_peer.node_id, existing_peer.state);
+        } else {
+            debug!("No existing peer found for address {}, accepting new connection", addr);
+        }
+        
+        info!("Accepting incoming connection from {} (proceeding with handshake)", addr);
+        
+        // Set state to Handshaking before starting handshake
+        // We need to find the peer by address first
+        let temp_id = format!("peer-{}", addr);
+        self.peer_manager.add_peer(temp_id.clone(), addr).await;
+        self.peer_manager.update_peer_state(&temp_id, ConnectionState::Handshaking).await;
+        
         self.event_emitter.emit("incoming_connection", Some(&addr.to_string())).await;
         
         // Perform handshake
+        debug!("Starting handshake with {} (incoming)", addr);
         let (peer_id, protocol_version, _peer_public_key) = match self.peer_manager
             .perform_handshake(&mut stream, true, Some(&self.encryption_manager), Some(&self.session_keys))
             .await
@@ -211,14 +261,19 @@ impl Node {
             Ok(result) => result,
             Err(e) => {
                 error!("Handshake failed with {}: {}", addr, e);
+                // Reset state on failure
+                self.peer_manager.update_peer_state(&temp_id, ConnectionState::Disconnected).await;
+                // Drop stream - it will close automatically
+                drop(stream);
                 return Err(e);
             }
         };
         
         info!("Handshake successful with {} (ID: {}, protocol: {})", addr, peer_id, protocol_version);
         
-        // Update peer info
+        // Update peer info with actual ID from handshake
         self.peer_manager.add_peer(peer_id.clone(), addr).await;
+        // Remove temp peer if different (add_peer will update the entry)
         self.peer_manager.update_peer_state(&peer_id, ConnectionState::Connected).await;
         self.peer_manager.update_peer_last_seen(&peer_id).await;
         
@@ -265,6 +320,11 @@ impl Node {
                     continue;
                 }
                 
+                // Skip if already connecting or handshaking
+                if peer.state == ConnectionState::Connecting || peer.state == ConnectionState::Handshaking {
+                    continue;
+                }
+                
                 // Skip if trying to connect to ourselves
                 if peer.address.port() == self.config.listen_addr.port() {
                     continue;
@@ -290,6 +350,19 @@ impl Node {
     
     /// Connect to a specific peer
     async fn connect_to_peer(&self, peer_id: String, addr: SocketAddr) {
+        // Double-check we're not already connected or connecting
+        // Also check by address to catch cases where peer_id might be different
+        let all_peers = self.peer_manager.get_all_peers().await;
+        if let Some(peer) = all_peers.iter().find(|p| p.address == addr || p.node_id == peer_id) {
+            if peer.state == ConnectionState::Connected || 
+               peer.state == ConnectionState::Connecting || 
+               peer.state == ConnectionState::Handshaking {
+                debug!("Skipping connection to {} - already {} state", addr, format!("{:?}", peer.state));
+                return;
+            }
+        }
+        
+        // Update state atomically
         self.peer_manager.update_peer_state(&peer_id, ConnectionState::Connecting).await;
         self.peer_manager.increment_connection_attempts(&peer_id).await;
         
@@ -297,7 +370,11 @@ impl Node {
             Ok(Ok(mut stream)) => {
                 debug!("TCP connection established to {}", addr);
                 
+                // Update state to Handshaking
+                self.peer_manager.update_peer_state(&peer_id, ConnectionState::Handshaking).await;
+                
                 // Perform handshake
+                debug!("Starting handshake with {} (outgoing)", addr);
                 match self.peer_manager.perform_handshake(&mut stream, false, Some(&self.encryption_manager), Some(&self.session_keys)).await {
                     Ok((actual_peer_id, protocol_version, _peer_public_key)) => {
                         info!("Connected to peer {} (ID: {}, protocol: {})", addr, actual_peer_id, protocol_version);
@@ -342,7 +419,7 @@ impl Node {
         peer_id: String,
         _addr: SocketAddr,
     ) -> Result<()> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::io::AsyncReadExt;
         
         let mut len_buf = [0u8; 4];
         
@@ -588,7 +665,7 @@ impl Node {
         });
         
         // Process discovered peers
-        while let Some((node_id, addr, public_key)) = rx.recv().await {
+        while let Some((node_id, addr, _public_key)) = rx.recv().await {
             if *self.shutdown.read().await {
                 break;
             }
@@ -650,6 +727,79 @@ impl Node {
         }
         
         Ok(())
+    }
+    
+    /// Send a mesh message to a specific peer or broadcast
+    pub async fn send_mesh_message(&self, to: Option<String>, data: Vec<u8>) -> Result<String> {
+        let mesh_msg = MeshMessage::new(self.id.clone(), to.clone(), data);
+        let message_id = mesh_msg.message_id.clone();
+        let protocol_msg = mesh_msg.to_protocol_message();
+        
+        let connected_peers = self.peer_manager.get_connected_peers().await;
+        
+        if connected_peers.is_empty() {
+            return Err(MeshError::Protocol("No connected peers".to_string()));
+        }
+        
+        // Send to specific peer or broadcast to all
+        let target_peers: Vec<String> = if let Some(target_id) = &to {
+            if connected_peers.iter().any(|p| &p.node_id == target_id) {
+                vec![target_id.clone()]
+            } else {
+                return Err(MeshError::Protocol(format!("Peer {} not connected", target_id)));
+            }
+        } else {
+            connected_peers.iter().map(|p| p.node_id.clone()).collect()
+        };
+        
+        info!("Sending mesh message {} to {} peer(s)", message_id, target_peers.len());
+        
+        // For MVP: Send as Data message to connected peers
+        // In future: Use proper mesh routing with forwarding
+        for peer_id in &target_peers {
+            // Emit event for visualization with correct peer_id
+            self.event_emitter.emit("message_sent", Some(peer_id)).await;
+            
+            if let Some(peer) = connected_peers.iter().find(|p| &p.node_id == peer_id) {
+                // Create a new connection to send the message
+                // This is simplified - in production, you'd use existing connection handles
+                let node = self.clone();
+                let peer_addr = peer.address;
+                let peer_id_clone = peer_id.clone();
+                let msg_clone = protocol_msg.clone();
+                let msg_id_clone = message_id.clone();
+                
+                tokio::spawn(async move {
+                    if let Ok(mut stream) = TcpStream::connect(&peer_addr).await {
+                        // Send as Data message for now (simplified)
+                        let data_msg = Message::Data {
+                            payload: serde_json::to_vec(&msg_clone).unwrap_or_default(),
+                            message_id: msg_id_clone,
+                        };
+                        if let Err(e) = node.send_message(&mut stream, &peer_id_clone, &data_msg).await {
+                            warn!("Failed to send message to {}: {}", peer_id_clone, e);
+                        }
+                    }
+                });
+            }
+        }
+        
+        Ok(message_id)
+    }
+    
+    /// Get list of all peers with their status
+    pub async fn get_peers(&self) -> Vec<(String, SocketAddr, ConnectionState)> {
+        let peers = self.peer_manager.get_all_peers().await;
+        peers.into_iter()
+            .map(|p| (p.node_id, p.address, p.state))
+            .collect()
+    }
+    
+    /// Get node status
+    pub async fn get_status(&self) -> (String, usize, usize) {
+        let all_peers = self.peer_manager.get_all_peers().await;
+        let connected = self.peer_manager.get_connected_peers().await;
+        (self.id.clone(), connected.len(), all_peers.len())
     }
 }
 

@@ -102,8 +102,8 @@ impl PeerManager {
         let mut peers = self.peers.write().await;
         peers.entry(node_id.clone())
             .and_modify(|p| {
-                // Update address if changed, but preserve added_at
                 p.address = address;
+                p.update_last_seen();
             })
             .or_insert_with(|| PeerInfo::new(node_id, address));
     }
@@ -121,19 +121,26 @@ impl PeerManager {
             peer.state = state;
             if state == ConnectionState::Connected {
                 peer.connected_at = Some(Instant::now());
+                peer.update_last_seen();
             }
         }
     }
     
-    /// Update peer last seen
-    pub async fn update_peer_last_seen(&self, node_id: &str) {
+    /// Update peer protocol version
+    pub async fn update_peer_protocol(&self, node_id: &str, version: u8) {
         let mut peers = self.peers.write().await;
         if let Some(peer) = peers.get_mut(node_id) {
-            peer.update_last_seen();
+            peer.protocol_version = Some(version);
         }
     }
     
-    /// Get all connected peers
+    /// Get all peers
+    pub async fn get_all_peers(&self) -> Vec<PeerInfo> {
+        let peers = self.peers.read().await;
+        peers.values().cloned().collect()
+    }
+    
+    /// Get connected peers only
     pub async fn get_connected_peers(&self) -> Vec<PeerInfo> {
         let peers = self.peers.read().await;
         peers.values()
@@ -142,32 +149,21 @@ impl PeerManager {
             .collect()
     }
     
-    /// Get all known peers
-    pub async fn get_all_peers(&self) -> Vec<PeerInfo> {
-        let peers = self.peers.read().await;
-        peers.values().cloned().collect()
-    }
-    
-    /// Remove stale peers (only disconnected ones that haven't been seen)
+    /// Remove stale peers
     pub async fn remove_stale_peers(&self, timeout: Duration) -> usize {
         let mut peers = self.peers.write().await;
-        let initial_len = peers.len();
+        let before = peers.len();
         peers.retain(|_, peer| {
-            // Don't remove connected peers
-            if peer.is_connected() {
+            // Don't remove if connecting, handshaking, or connected
+            if matches!(peer.state, ConnectionState::Connecting | ConnectionState::Handshaking | ConnectionState::Connected) {
                 return true;
             }
-            // Don't remove peers that are trying to connect
-            if peer.state == ConnectionState::Connecting || peer.state == ConnectionState::Handshaking {
-                return true;
-            }
-            // Only remove disconnected peers that are stale
             !peer.is_stale(timeout)
         });
-        initial_len - peers.len()
+        before - peers.len()
     }
     
-    /// Increment connection attempts for a peer
+    /// Increment connection attempts
     pub async fn increment_connection_attempts(&self, node_id: &str) {
         let mut peers = self.peers.write().await;
         if let Some(peer) = peers.get_mut(node_id) {
@@ -175,160 +171,189 @@ impl PeerManager {
         }
     }
     
+    /// Update peer last seen timestamp
+    pub async fn update_peer_last_seen(&self, node_id: &str) {
+        let mut peers = self.peers.write().await;
+        if let Some(peer) = peers.get_mut(node_id) {
+            peer.update_last_seen();
+        }
+    }
+    
     /// Perform handshake with a peer
     pub async fn perform_handshake(
         &self,
         stream: &mut TcpStream,
-        is_incoming: bool,
+        is_outgoing: bool,
         encryption_manager: Option<&crate::p2p::encryption::EncryptionManager>,
         session_keys: Option<&crate::p2p::encryption::SessionKeyManager>,
-    ) -> Result<(String, u8, Option<String>)> {
+    ) -> Result<(String, u8, Option<rsa::RsaPublicKey>)> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         use crate::p2p::protocol::Frame;
+        use crate::p2p::encryption::EncryptionManager;
         
-        if is_incoming {
-            // Wait for handshake from peer
-            let mut len_buf = [0u8; 4];
-            timeout(Duration::from_secs(5), stream.read_exact(&mut len_buf))
-                .await
-                .map_err(|_| MeshError::Timeout("Handshake timeout".to_string()))?
-                .map_err(|e| MeshError::Io(e))?;
-            
-            let length = u32::from_be_bytes(len_buf) as usize;
-            let mut payload = vec![0u8; length];
-            timeout(Duration::from_secs(5), stream.read_exact(&mut payload))
-                .await
-                .map_err(|_| MeshError::Timeout("Handshake read timeout".to_string()))?
-                .map_err(|e| MeshError::Io(e))?;
-            
-            let handshake = Message::from_bytes(&payload)
-                .map_err(|e| MeshError::Protocol(format!("Invalid handshake: {}", e)))?;
-            
-            let (node_id, protocol_version, peer_public_key) = match handshake {
-                Message::Handshake { node_id, protocol_version, public_key, .. } => {
-                    if protocol_version != PROTOCOL_VERSION {
-                        return Err(MeshError::Protocol(format!(
-                            "Protocol version mismatch: expected {}, got {}",
-                            PROTOCOL_VERSION, protocol_version
-                        )));
-                    }
-                    (node_id, protocol_version, public_key)
-                }
-                _ => return Err(MeshError::Protocol("Expected handshake message".to_string())),
-            };
-            
-            // Generate and encrypt session key if encryption is enabled
-            let (encrypted_session_key, nonce, our_public_key) = if let (Some(enc_mgr), Some(sess_keys)) = (encryption_manager, session_keys) {
-                if let Some(ref peer_pub_key_str) = peer_public_key {
-                    // Parse peer's public key
-                    if let Ok(peer_pub_key) = crate::p2p::encryption::EncryptionManager::parse_public_key(peer_pub_key_str) {
-                        // Generate session key
-                        let (aes_key, aes_nonce) = crate::p2p::encryption::EncryptionManager::generate_session_key();
-                        
-                        // Encrypt session key with peer's public key
-                        if let Ok(enc_key) = enc_mgr.encrypt_with_public_key(aes_key.as_slice(), &peer_pub_key) {
-                            // Store session key for this peer
-                            sess_keys.set_session_key(node_id.clone(), aes_key, aes_nonce.clone()).await;
-                            
-                            // Get our public key
-                            if let Ok(our_pub_key_str) = enc_mgr.get_public_key_string() {
-                                (Some(enc_key), Some(aes_nonce), Some(our_pub_key_str))
-                            } else {
-                                (None, None, None)
-                            }
-                        } else {
-                            (None, None, None)
-                        }
-                    } else {
-                        (None, None, None)
-                    }
-                } else {
-                    // No encryption
-                    (None, None, None)
-                }
-            } else {
-                (None, None, None)
-            };
-            
-            // Send handshake ack
-            let ack = Message::HandshakeAck {
-                node_id: self.our_node_id.clone(),
-                protocol_version: PROTOCOL_VERSION,
-                public_key: our_public_key,
-                encrypted_session_key,
-                nonce,
-            };
-            let frame = Frame::from_message(&ack)
-                .map_err(|e| MeshError::Protocol(format!("Failed to serialize ack: {}", e)))?;
-            stream.write_all(&frame.to_bytes())
-                .await
-                .map_err(|e| MeshError::Io(e))?;
-            
-            Ok((node_id, protocol_version, peer_public_key))
-        } else {
-            // Get our public key if encryption is enabled
-            let our_public_key = if let Some(enc_mgr) = encryption_manager {
-                enc_mgr.get_public_key_string().ok()
-            } else {
-                None
-            };
-            
-            // Send handshake
-            let handshake = Message::Handshake {
-                node_id: self.our_node_id.clone(),
-                protocol_version: PROTOCOL_VERSION,
-                listen_port: self.our_listen_port,
-                public_key: our_public_key,
-            };
-            let frame = Frame::from_message(&handshake)
-                .map_err(|e| MeshError::Protocol(format!("Failed to serialize handshake: {}", e)))?;
-            stream.write_all(&frame.to_bytes())
-                .await
-                .map_err(|e| MeshError::Io(e))?;
-            
-            // Wait for ack
-            let mut len_buf = [0u8; 4];
-            timeout(Duration::from_secs(5), stream.read_exact(&mut len_buf))
-                .await
-                .map_err(|_| MeshError::Timeout("Handshake ack timeout".to_string()))?
-                .map_err(|e| MeshError::Io(e))?;
-            
-            let length = u32::from_be_bytes(len_buf) as usize;
-            let mut payload = vec![0u8; length];
-            timeout(Duration::from_secs(5), stream.read_exact(&mut payload))
-                .await
-                .map_err(|_| MeshError::Timeout("Handshake ack read timeout".to_string()))?
-                .map_err(|e| MeshError::Io(e))?;
-            
-            let ack = Message::from_bytes(&payload)
-                .map_err(|e| MeshError::Protocol(format!("Invalid handshake ack: {}", e)))?;
-            
-            let (node_id, protocol_version, peer_public_key) = match ack {
-                Message::HandshakeAck { node_id, protocol_version, public_key, encrypted_session_key, nonce } => {
-                    if protocol_version != PROTOCOL_VERSION {
-                        return Err(MeshError::Protocol(format!(
-                            "Protocol version mismatch: expected {}, got {}",
-                            PROTOCOL_VERSION, protocol_version
-                        )));
-                    }
-                    
-                    // Decrypt and store session key if encryption is enabled
-                    if let (Some(enc_mgr), Some(sess_keys), Some(enc_key), Some(nonce_bytes)) = 
-                        (encryption_manager, session_keys, encrypted_session_key, nonce) {
-                        // Decrypt session key with our private key
-                        if let Ok(aes_key_bytes) = enc_mgr.decrypt_with_private_key(&enc_key).await {
-                            let aes_key = aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&aes_key_bytes);
-                            sess_keys.set_session_key(node_id.clone(), aes_key.clone(), nonce_bytes.clone()).await;
-                        }
-                    }
-                    
-                    (node_id, protocol_version, public_key)
-                }
-                _ => return Err(MeshError::Protocol("Expected handshake ack".to_string())),
-            };
-            
-            Ok((node_id, protocol_version, peer_public_key))
+        // Read handshake
+        let mut len_buf = [0u8; 4];
+        stream.read_exact(&mut len_buf).await
+            .map_err(|e| MeshError::Peer(format!("Failed to read handshake length: {}", e)))?;
+        let len = u32::from_be_bytes(len_buf) as usize;
+        
+        if len > 65536 {
+            return Err(MeshError::Peer("Handshake message too large".to_string()));
         }
+        
+        let mut buf = vec![0u8; len];
+        stream.read_exact(&mut buf).await
+            .map_err(|e| MeshError::Peer(format!("Failed to read handshake: {}", e)))?;
+        
+        // Parse message from payload
+        let message: Message = Message::from_bytes(&buf)
+            .map_err(|e| MeshError::Peer(format!("Failed to parse handshake message: {}", e)))?;
+        
+        let (peer_id, protocol_version, peer_public_key) = match message {
+            Message::Handshake { node_id, protocol_version, listen_port: _, public_key } => {
+                // Parse peer's public key if provided
+                let peer_pub_key = if let Some(pub_key_str) = &public_key {
+                    Some(EncryptionManager::parse_public_key(pub_key_str)?)
+                } else {
+                    None
+                };
+                
+                (node_id, protocol_version, peer_pub_key)
+            }
+            _ => return Err(MeshError::Peer("Expected handshake message".to_string())),
+        };
+        
+        // Send handshake ack
+        let our_public_key = if let Some(enc_mgr) = encryption_manager {
+            enc_mgr.get_public_key_string()?
+        } else {
+            String::new()
+        };
+        
+        // Generate and encrypt session key if we have encryption manager
+        let (encrypted_session_key, nonce) = if let (Some(enc_mgr), Some(sess_keys)) = (encryption_manager, session_keys) {
+            if let Some(peer_pub_key) = &peer_public_key {
+                // Generate AES session key
+                let (aes_key, nonce_bytes) = EncryptionManager::generate_session_key();
+                
+                // Encrypt session key with peer's public key
+                let encrypted_key = enc_mgr.encrypt_with_public_key(aes_key.as_slice(), peer_pub_key)?;
+                
+                // Store session key
+                sess_keys.set_session_key(peer_id.clone(), aes_key, nonce_bytes.clone()).await;
+                
+                (Some(encrypted_key), Some(nonce_bytes))
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+        
+        let ack_message = Message::HandshakeAck {
+            node_id: self.our_node_id.clone(),
+            protocol_version: PROTOCOL_VERSION,
+            public_key: Some(our_public_key),
+            encrypted_session_key,
+            nonce,
+        };
+        
+        let ack_bytes = ack_message.to_bytes()
+            .map_err(|e| MeshError::Serialization(e))?;
+        let len = ack_bytes.len() as u32;
+        
+        stream.write_all(&len.to_be_bytes()).await
+            .map_err(|e| MeshError::Peer(format!("Failed to write handshake ack length: {}", e)))?;
+        stream.write_all(&ack_bytes).await
+            .map_err(|e| MeshError::Peer(format!("Failed to write handshake ack: {}", e)))?;
+        stream.flush().await
+            .map_err(|e| MeshError::Peer(format!("Failed to flush handshake ack: {}", e)))?;
+        
+        Ok((peer_id, protocol_version, peer_public_key))
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{IpAddr, Ipv4Addr};
+    
+    #[tokio::test]
+    async fn test_peer_info_new() {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let peer = PeerInfo::new("test-node".to_string(), addr);
+        
+        assert_eq!(peer.node_id, "test-node");
+        assert_eq!(peer.address, addr);
+        assert_eq!(peer.state, ConnectionState::Disconnected);
+        assert_eq!(peer.protocol_version, None);
+        assert_eq!(peer.connection_attempts, 0);
+    }
+    
+    #[tokio::test]
+    async fn test_peer_info_is_connected() {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let mut peer = PeerInfo::new("test-node".to_string(), addr);
+        
+        assert!(!peer.is_connected());
+        peer.state = ConnectionState::Connected;
+        assert!(peer.is_connected());
+    }
+    
+    #[tokio::test]
+    async fn test_peer_info_is_stale() {
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080);
+        let peer = PeerInfo::new("test-node".to_string(), addr);
+        
+        // New peer should not be stale
+        assert!(!peer.is_stale(Duration::from_secs(60)));
+        
+        // Wait a bit and check again (should still not be stale due to 30s grace period)
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!peer.is_stale(Duration::from_secs(60)));
+    }
+    
+    #[tokio::test]
+    async fn test_peer_manager_add_peer() {
+        let manager = PeerManager::new("our-node".to_string(), 8080);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        
+        manager.add_peer("peer1".to_string(), addr).await;
+        
+        let peer = manager.get_peer("peer1").await;
+        assert!(peer.is_some());
+        let peer = peer.unwrap();
+        assert_eq!(peer.node_id, "peer1");
+        assert_eq!(peer.address, addr);
+    }
+    
+    #[tokio::test]
+    async fn test_peer_manager_update_state() {
+        let manager = PeerManager::new("our-node".to_string(), 8080);
+        let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        
+        manager.add_peer("peer1".to_string(), addr).await;
+        manager.update_peer_state("peer1", ConnectionState::Connected).await;
+        
+        let peer = manager.get_peer("peer1").await.unwrap();
+        assert_eq!(peer.state, ConnectionState::Connected);
+        assert!(peer.connected_at.is_some());
+    }
+    
+    #[tokio::test]
+    async fn test_peer_manager_get_connected_peers() {
+        let manager = PeerManager::new("our-node".to_string(), 8080);
+        let addr1 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8081);
+        let addr2 = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8082);
+        
+        manager.add_peer("peer1".to_string(), addr1).await;
+        manager.add_peer("peer2".to_string(), addr2).await;
+        
+        manager.update_peer_state("peer1", ConnectionState::Connected).await;
+        manager.update_peer_state("peer2", ConnectionState::Disconnected).await;
+        
+        let connected = manager.get_connected_peers().await;
+        assert_eq!(connected.len(), 1);
+        assert_eq!(connected[0].node_id, "peer1");
+    }
+}
