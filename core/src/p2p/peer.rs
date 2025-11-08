@@ -278,9 +278,7 @@ impl PeerManager {
             nonce,
         };
 
-        let ack_bytes = ack_message
-            .to_bytes()
-            .map_err(MeshError::Serialization)?;
+        let ack_bytes = ack_message.to_bytes().map_err(MeshError::Serialization)?;
         let len = ack_bytes.len() as u32;
 
         stream

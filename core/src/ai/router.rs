@@ -30,7 +30,6 @@ impl ElysiumAddress {
             )))
         }
     }
-
 }
 
 impl fmt::Display for ElysiumAddress {
