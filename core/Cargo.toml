@@ -1,0 +1,24 @@
+[package]
+name = "core"
+version = "0.1.0"
+edition = "2021"
+default-run = "core"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rand = "0.8"
+crossterm = "0.27"
+ratatui = "0.27"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+bytes = "1.5"
+rsa = { version = "0.9", features = ["sha2"] }
+aes-gcm = { version = "0.10", features = ["aes"] }
+sha2 = "0.10"
+base64 = "0.21"
