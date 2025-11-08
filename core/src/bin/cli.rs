@@ -106,7 +106,7 @@ fn send_message(peer_id: Option<String>, message: String) -> anyhow::Result<()> 
         })
     };
 
-    writeln!(stream, "{}", request.to_string())?;
+    writeln!(stream, "{}", request)?;
 
     let mut response = String::new();
     use std::io::BufRead;
@@ -139,7 +139,7 @@ fn list_peers() -> anyhow::Result<()> {
         "command": "peers"
     });
 
-    writeln!(stream, "{}", request.to_string())?;
+    writeln!(stream, "{}", request)?;
 
     let mut response = String::new();
     use std::io::BufRead;
@@ -181,7 +181,7 @@ fn show_status() -> anyhow::Result<()> {
         "command": "status"
     });
 
-    writeln!(stream, "{}", request.to_string())?;
+    writeln!(stream, "{}", request)?;
 
     let mut response = String::new();
     use std::io::BufRead;

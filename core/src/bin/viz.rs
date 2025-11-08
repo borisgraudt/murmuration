@@ -232,13 +232,10 @@ async fn main() -> std::io::Result<()> {
         let sock = UdpSocket::bind("127.0.0.1:9999").await.expect("bind 9999");
         let mut buf = vec![0u8; 2048];
         loop {
-            match sock.recv_from(&mut buf).await {
-                Ok((n, _)) => {
-                    if let Ok(s) = std::str::from_utf8(&buf[..n]) {
-                        let _ = tx.send(s.to_string());
-                    }
+            if let Ok((n, _)) = sock.recv_from(&mut buf).await {
+                if let Ok(s) = std::str::from_utf8(&buf[..n]) {
+                    let _ = tx.send(s.to_string());
                 }
-                Err(_) => {}
             }
         }
     });
@@ -359,8 +356,7 @@ fn run_app<B: ratatui::backend::Backend>(
                                 // Create glowing wave effect
                                 let intensity = if distance_from_wave < 0.15 {
                                     // Near the wave - bright glow
-                                    let fade = 1.0 - (distance_from_wave / 0.15);
-                                    fade
+                                    1.0 - (distance_from_wave / 0.15)
                                 } else {
                                     0.0
                                 };
@@ -512,7 +508,7 @@ fn run_app<B: ratatui::backend::Backend>(
                     for &(ch, style) in row {
                         line.push(Span::styled(
                             ch.to_string(),
-                            style.unwrap_or_else(|| Style::default()),
+                            style.unwrap_or_default(),
                         ));
                     }
                     lines.push(ratatui::text::Line::from(line));
