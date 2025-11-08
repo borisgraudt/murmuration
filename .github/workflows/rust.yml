@@ -66,8 +66,15 @@ jobs:
       - name: Build all binaries
         working-directory: core
         run: |
-          cargo build --release --verbose
-          cargo build --bin core --bin viz --bin cli --verbose
+          cargo build --release --bin core --bin viz --bin cli --verbose
+      - name: List build artifacts
+        working-directory: core
+        shell: bash
+        run: |
+          echo "Checking for binaries in core/target/release/..."
+          ls -la target/release/ 2>/dev/null || echo "core/target/release/ not found"
+          echo "Checking for binaries in root target/release/..."
+          ls -la ../target/release/ 2>/dev/null || echo "root target/release/ not found"
       - name: Run tests
         working-directory: core
         timeout-minutes: 15
@@ -77,9 +84,31 @@ jobs:
         working-directory: core
         shell: bash
         run: |
-          test -f target/release/core || (echo "core binary not found" && exit 1)
-          test -f target/release/viz || (echo "viz binary not found" && exit 1)
-          test -f target/release/cli || (echo "cli binary not found" && exit 1)
+          # Check in core/target/release first, then root target/release
+          if [ -f target/release/core ]; then
+            echo "✓ core binary found in core/target/release/"
+          elif [ -f ../target/release/core ]; then
+            echo "✓ core binary found in root target/release/"
+          else
+            echo "✗ core binary not found"
+            exit 1
+          fi
+          if [ -f target/release/viz ]; then
+            echo "✓ viz binary found in core/target/release/"
+          elif [ -f ../target/release/viz ]; then
+            echo "✓ viz binary found in root target/release/"
+          else
+            echo "✗ viz binary not found"
+            exit 1
+          fi
+          if [ -f target/release/cli ]; then
+            echo "✓ cli binary found in core/target/release/"
+          elif [ -f ../target/release/cli ]; then
+            echo "✓ cli binary found in root target/release/"
+          else
+            echo "✗ cli binary not found"
+            exit 1
+          fi
           echo "All binaries found successfully"
       
       - name: Check binaries exist (Windows)
@@ -87,9 +116,31 @@ jobs:
         working-directory: core
         shell: pwsh
         run: |
-          if (-not (Test-Path "target/release/core.exe")) { Write-Error "core.exe not found"; exit 1 }
-          if (-not (Test-Path "target/release/viz.exe")) { Write-Error "viz.exe not found"; exit 1 }
-          if (-not (Test-Path "target/release/cli.exe")) { Write-Error "cli.exe not found"; exit 1 }
+          # Check in core/target/release first, then root target/release
+          if (Test-Path "target/release/core.exe") {
+            Write-Host "✓ core.exe found in core/target/release/"
+          } elseif (Test-Path "../target/release/core.exe") {
+            Write-Host "✓ core.exe found in root target/release/"
+          } else {
+            Write-Error "✗ core.exe not found"
+            exit 1
+          }
+          if (Test-Path "target/release/viz.exe") {
+            Write-Host "✓ viz.exe found in core/target/release/"
+          } elseif (Test-Path "../target/release/viz.exe") {
+            Write-Host "✓ viz.exe found in root target/release/"
+          } else {
+            Write-Error "✗ viz.exe not found"
+            exit 1
+          }
+          if (Test-Path "target/release/cli.exe") {
+            Write-Host "✓ cli.exe found in core/target/release/"
+          } elseif (Test-Path "../target/release/cli.exe") {
+            Write-Host "✓ cli.exe found in root target/release/"
+          } else {
+            Write-Error "✗ cli.exe not found"
+            exit 1
+          }
           Write-Host "All binaries found successfully"
 
   # Build documentation
