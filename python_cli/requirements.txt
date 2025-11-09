@@ -1,4 +1,4 @@
-requests>=2.31.0
-websocket-client>=1.6.0
-click>=8.1.0
+# MeshLink Python CLI dependencies
+# Note: This CLI uses only standard library (socket, json, sys, os)
+# No external dependencies required
 

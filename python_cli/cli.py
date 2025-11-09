@@ -144,10 +144,79 @@ class MeshLinkClient:
         print(f"Connected: {connected}/{total} peers")
         print(f"API Port: {self.api_port}")
 
+def run_repl(client: MeshLinkClient):
+    """Run interactive REPL mode"""
+    print("MeshLink CLI - Interactive Mode")
+    print("Type 'help' for commands, 'exit' to quit")
+    print("-" * 60)
+    
+    while True:
+        try:
+            line = input("meshlink> ").strip()
+            if not line:
+                continue
+            
+            parts = line.split(None, 1)
+            command = parts[0].lower()
+            args = parts[1] if len(parts) > 1 else ""
+            
+            if command == "exit" or command == "quit":
+                print("Goodbye!")
+                break
+            elif command == "help":
+                print("\nCommands:")
+                print("  send <peer_id> <message>  - Send message to specific peer")
+                print("  broadcast <message>       - Broadcast message to all peers")
+                print("  peers                     - List all peers")
+                print("  status                    - Show node status")
+                print("  help                      - Show this help")
+                print("  exit                      - Exit interactive mode")
+                print()
+            elif command == "send":
+                if not args:
+                    print("Usage: send <peer_id> <message>")
+                    continue
+                send_parts = args.split(None, 1)
+                if len(send_parts) < 2:
+                    print("Usage: send <peer_id> <message>")
+                    continue
+                peer_id = send_parts[0]
+                message = send_parts[1]
+                client.send_message(peer_id, message)
+            elif command == "broadcast":
+                if not args:
+                    print("Usage: broadcast <message>")
+                    continue
+                client.send_message(None, args)
+            elif command == "peers":
+                client.list_peers()
+            elif command == "status":
+                client.show_status()
+            else:
+                print(f"Unknown command: {command}. Type 'help' for available commands.")
+        except KeyboardInterrupt:
+            print("\nGoodbye!")
+            break
+        except EOFError:
+            print("\nGoodbye!")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+
 def main():
     """Main CLI entry point"""
+    # Check for REPL mode
+    if len(sys.argv) == 1 or (len(sys.argv) == 2 and sys.argv[1] in ["-i", "--interactive", "repl"]):
+        try:
+            client = MeshLinkClient()
+            run_repl(client)
+        except SystemExit:
+            pass
+        return
+    
     if len(sys.argv) < 2:
         print("Usage: python cli.py <command> [args...]")
+        print("       python cli.py [-i|--interactive|repl]  - Interactive mode")
         print("\nCommands:")
         print("  send <peer_id> <message>  - Send message to specific peer")
         print("  broadcast <message>       - Broadcast message to all peers")
