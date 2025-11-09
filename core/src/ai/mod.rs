@@ -4,5 +4,7 @@ pub mod routing_logger;
 pub mod stats_collector;
 
 pub use router::{ElysiumAddress, MeshMessage, Router};
-pub use routing_logger::{RoutingLogger, RoutingLogEntry, PeerSelection, PeerMetricsSnapshot, MessageContext};
+pub use routing_logger::{
+    MessageContext, PeerMetricsSnapshot, PeerSelection, RoutingLogEntry, RoutingLogger,
+};
 pub use stats_collector::StatsCollector;

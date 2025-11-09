@@ -94,7 +94,7 @@ pub struct PeerInfo {
     pub last_seen: Option<Instant>,
     pub connected_at: Option<Instant>,
     pub connection_attempts: u32,
-    pub added_at: Instant, // When this peer was first added
+    pub added_at: Instant,    // When this peer was first added
     pub metrics: PeerMetrics, // Metrics for AI routing
 }
 
@@ -315,7 +315,9 @@ impl PeerManager {
                 public_key: Some(our_public_key),
             };
 
-            let handshake_bytes = handshake_message.to_bytes().map_err(MeshError::Serialization)?;
+            let handshake_bytes = handshake_message
+                .to_bytes()
+                .map_err(MeshError::Serialization)?;
             let len = handshake_bytes.len() as u32;
 
             stream
@@ -333,14 +335,15 @@ impl PeerManager {
 
             // Read handshake ack
             let mut len_buf = [0u8; 4];
-            stream
-                .read_exact(&mut len_buf)
-                .await
-                .map_err(|e| MeshError::Peer(format!("Failed to read handshake ack length: {}", e)))?;
+            stream.read_exact(&mut len_buf).await.map_err(|e| {
+                MeshError::Peer(format!("Failed to read handshake ack length: {}", e))
+            })?;
             let len = u32::from_be_bytes(len_buf) as usize;
 
             if len > 65536 {
-                return Err(MeshError::Peer("Handshake ack message too large".to_string()));
+                return Err(MeshError::Peer(
+                    "Handshake ack message too large".to_string(),
+                ));
             }
 
             let mut buf = vec![0u8; len];
@@ -350,8 +353,9 @@ impl PeerManager {
                 .map_err(|e| MeshError::Peer(format!("Failed to read handshake ack: {}", e)))?;
 
             // Parse handshake ack
-            let message: Message = Message::from_bytes(&buf)
-                .map_err(|e| MeshError::Peer(format!("Failed to parse handshake ack message: {}", e)))?;
+            let message: Message = Message::from_bytes(&buf).map_err(|e| {
+                MeshError::Peer(format!("Failed to parse handshake ack message: {}", e))
+            })?;
 
             let (peer_id, protocol_version, peer_public_key) = match message {
                 Message::HandshakeAck {
@@ -369,15 +373,19 @@ impl PeerManager {
                     };
 
                     // Decrypt and store session key if provided
-                    if let (Some(enc_mgr), Some(sess_keys), Some(enc_key), Some(nonce_bytes)) =
-                        (encryption_manager, session_keys, encrypted_session_key, nonce)
-                    {
+                    if let (Some(enc_mgr), Some(sess_keys), Some(enc_key), Some(nonce_bytes)) = (
+                        encryption_manager,
+                        session_keys,
+                        encrypted_session_key,
+                        nonce,
+                    ) {
                         // Decrypt session key with our private key
                         match enc_mgr.decrypt_with_private_key(&enc_key).await {
                             Ok(aes_key_bytes) => {
                                 // Convert Vec<u8> to Key<Aes256Gcm>
                                 #[allow(deprecated)] // GenericArray::from_slice is deprecated
-                                let aes_key = aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&aes_key_bytes);
+                                let aes_key =
+                                    aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&aes_key_bytes);
 
                                 // Store session key
                                 sess_keys
@@ -393,7 +401,11 @@ impl PeerManager {
 
                     (node_id, protocol_version, peer_pub_key)
                 }
-                _ => return Err(MeshError::Peer("Expected handshake ack message".to_string())),
+                _ => {
+                    return Err(MeshError::Peer(
+                        "Expected handshake ack message".to_string(),
+                    ))
+                }
             };
 
             Ok((peer_id, protocol_version, peer_public_key))
@@ -418,8 +430,9 @@ impl PeerManager {
                 .map_err(|e| MeshError::Peer(format!("Failed to read handshake: {}", e)))?;
 
             // Parse message from payload
-            let message: Message = Message::from_bytes(&buf)
-                .map_err(|e| MeshError::Peer(format!("Failed to parse handshake message: {}", e)))?;
+            let message: Message = Message::from_bytes(&buf).map_err(|e| {
+                MeshError::Peer(format!("Failed to parse handshake message: {}", e))
+            })?;
 
             let (peer_id, protocol_version, peer_public_key) = match message {
                 Message::Handshake {
@@ -483,10 +496,9 @@ impl PeerManager {
             let ack_bytes = ack_message.to_bytes().map_err(MeshError::Serialization)?;
             let len = ack_bytes.len() as u32;
 
-            stream
-                .write_all(&len.to_be_bytes())
-                .await
-                .map_err(|e| MeshError::Peer(format!("Failed to write handshake ack length: {}", e)))?;
+            stream.write_all(&len.to_be_bytes()).await.map_err(|e| {
+                MeshError::Peer(format!("Failed to write handshake ack length: {}", e))
+            })?;
             stream
                 .write_all(&ack_bytes)
                 .await

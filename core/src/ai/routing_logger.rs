@@ -12,22 +12,22 @@ use tokio::sync::RwLock;
 pub struct RoutingLogEntry {
     /// Timestamp of the routing decision
     pub timestamp: String,
-    
+
     /// Message ID
     pub message_id: String,
-    
+
     /// Node ID that made the routing decision
     pub node_id: String,
-    
+
     /// Peer that sent the message (if forwarding)
     pub from_peer: Option<String>,
-    
+
     /// Selected peers for forwarding (with scores and metrics)
     pub selected_peers: Vec<PeerSelection>,
-    
+
     /// All available peers at the time of decision (with metrics)
     pub available_peers: Vec<PeerMetricsSnapshot>,
-    
+
     /// Message context
     pub message_context: MessageContext,
 }
@@ -114,11 +114,7 @@ impl RoutingLogger {
 
         if let Some(path) = file_path {
             // Append to JSONL file (one JSON object per line)
-            if let Ok(mut file) = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)
-            {
+            if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&path) {
                 if let Ok(json) = serde_json::to_string(&entry) {
                     let _ = writeln!(file, "{}", json);
                     let _ = file.flush();
@@ -141,4 +137,3 @@ impl Clone for RoutingLogger {
         }
     }
 }
-

@@ -1,6 +1,5 @@
 /// Core P2P tests
 /// Integration tests for P2P protocol, encryption, and routing
-
 // In integration tests, the package is available as an external crate
 // Package name is "meshlink_core" to avoid conflict with std::core
 extern crate meshlink_core;
@@ -133,13 +132,13 @@ async fn test_3_nodes_connectivity() {
         known_peers: vec!["127.0.0.1:19002".to_string(), "127.0.0.1:19003".to_string()],
         ..Default::default()
     };
-    
+
     let config2 = Config {
         listen_addr: "127.0.0.1:19002".parse().unwrap(),
         known_peers: vec!["127.0.0.1:19001".to_string(), "127.0.0.1:19003".to_string()],
         ..Default::default()
     };
-    
+
     let config3 = Config {
         listen_addr: "127.0.0.1:19003".parse().unwrap(),
         known_peers: vec!["127.0.0.1:19001".to_string(), "127.0.0.1:19002".to_string()],
@@ -174,9 +173,18 @@ async fn test_3_nodes_connectivity() {
     let (id2, connected2, total2) = node2.get_status().await;
     let (id3, connected3, total3) = node3.get_status().await;
 
-    println!("Node 1 ({}) connected peers: {}/{}", id1, connected1, total1);
-    println!("Node 2 ({}) connected peers: {}/{}", id2, connected2, total2);
-    println!("Node 3 ({}) connected peers: {}/{}", id3, connected3, total3);
+    println!(
+        "Node 1 ({}) connected peers: {}/{}",
+        id1, connected1, total1
+    );
+    println!(
+        "Node 2 ({}) connected peers: {}/{}",
+        id2, connected2, total2
+    );
+    println!(
+        "Node 3 ({}) connected peers: {}/{}",
+        id3, connected3, total3
+    );
 
     // At least one node should have connected peers
     let total_connections = connected1 + connected2 + connected3;
@@ -208,13 +216,13 @@ async fn test_3_nodes_message_sending() {
         known_peers: vec!["127.0.0.1:19012".to_string(), "127.0.0.1:19013".to_string()],
         ..Default::default()
     };
-    
+
     let config2 = Config {
         listen_addr: "127.0.0.1:19012".parse().unwrap(),
         known_peers: vec!["127.0.0.1:19011".to_string(), "127.0.0.1:19013".to_string()],
         ..Default::default()
     };
-    
+
     let config3 = Config {
         listen_addr: "127.0.0.1:19013".parse().unwrap(),
         known_peers: vec!["127.0.0.1:19011".to_string(), "127.0.0.1:19012".to_string()],
@@ -249,11 +257,14 @@ async fn test_3_nodes_message_sending() {
     if connected1 > 0 {
         // Get connected peers via API or use broadcast
         let test_message = b"Test message from node1";
-        
+
         // Try broadcast first (sends to all connected peers)
         match node1.send_mesh_message(None, test_message.to_vec()).await {
             Ok(message_id) => {
-                println!("✅ Message sent successfully from node1 (broadcast): {}", message_id);
+                println!(
+                    "✅ Message sent successfully from node1 (broadcast): {}",
+                    message_id
+                );
                 assert!(!message_id.is_empty());
             }
             Err(e) => {
@@ -358,14 +369,17 @@ async fn test_ai_routing_peer_selection() {
     );
 
     println!("✅ AI-Routing selected peers: {:?}", best_peers);
-    
+
     // Verify scores
     let score1 = Router::calculate_peer_score(&peer1.metrics);
     let score2 = Router::calculate_peer_score(&peer2.metrics);
     let score3 = Router::calculate_peer_score(&peer3.metrics);
-    
-    println!("Peer scores: peer1={:.2}, peer2={:.2}, peer3={:.2}", score1, score2, score3);
-    
+
+    println!(
+        "Peer scores: peer1={:.2}, peer2={:.2}, peer3={:.2}",
+        score1, score2, score3
+    );
+
     // peer1 should have highest score
     assert!(score1 > score2, "peer1 should have higher score than peer2");
 }
@@ -381,7 +395,7 @@ async fn test_ai_routing_latency_measurement() {
         known_peers: vec!["127.0.0.1:19022".to_string()],
         ..Default::default()
     };
-    
+
     let config2 = Config {
         listen_addr: "127.0.0.1:19022".parse().unwrap(),
         known_peers: vec!["127.0.0.1:19021".to_string()],
@@ -438,13 +452,13 @@ async fn test_ai_routing_message_forwarding() {
         known_peers: vec!["127.0.0.1:19032".to_string(), "127.0.0.1:19033".to_string()],
         ..Default::default()
     };
-    
+
     let config2 = Config {
         listen_addr: "127.0.0.1:19032".parse().unwrap(),
         known_peers: vec!["127.0.0.1:19031".to_string(), "127.0.0.1:19033".to_string()],
         ..Default::default()
     };
-    
+
     let config3 = Config {
         listen_addr: "127.0.0.1:19033".parse().unwrap(),
         known_peers: vec!["127.0.0.1:19031".to_string(), "127.0.0.1:19032".to_string()],
@@ -479,14 +493,14 @@ async fn test_ai_routing_message_forwarding() {
     let (_, connected1, _) = node1.get_status().await;
     if connected1 >= 2 {
         let test_message = b"AI-routing test message";
-        
+
         match node1.send_mesh_message(None, test_message.to_vec()).await {
             Ok(message_id) => {
                 println!("✅ Broadcast message sent: {}", message_id);
-                
+
                 // Wait a bit for forwarding
                 sleep(Duration::from_secs(2)).await;
-                
+
                 println!("✅ AI-routing forwarding test completed");
                 println!("   (Check logs for '🎯 AI-Routing: Forwarding mesh message' to see peer selection)");
             }
@@ -495,7 +509,10 @@ async fn test_ai_routing_message_forwarding() {
             }
         }
     } else {
-        println!("⚠️ Not enough connected peers (need 2+, got {}), skipping AI-routing test", connected1);
+        println!(
+            "⚠️ Not enough connected peers (need 2+, got {}), skipping AI-routing test",
+            connected1
+        );
     }
 
     // Cleanup
@@ -504,4 +521,3 @@ async fn test_ai_routing_message_forwarding() {
     handle2.abort();
     handle3.abort();
 }
-

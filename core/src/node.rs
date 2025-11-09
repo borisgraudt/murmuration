@@ -1,5 +1,7 @@
 use crate::ai::router::{MeshMessage, Router};
-use crate::ai::routing_logger::{RoutingLogger, RoutingLogEntry, PeerSelection, PeerMetricsSnapshot, MessageContext};
+use crate::ai::routing_logger::{
+    MessageContext, PeerMetricsSnapshot, PeerSelection, RoutingLogEntry, RoutingLogger,
+};
 /// Main node implementation
 use crate::config::Config;
 use crate::error::{MeshError, Result};
@@ -355,10 +357,13 @@ impl Node {
 
         // Cleanup - only mark as disconnected if we're not already connected via another connection
         // Check if peer is still connected (might have reconnected)
-        let current_state = self.peer_manager.get_peer(&peer_id).await
+        let current_state = self
+            .peer_manager
+            .get_peer(&peer_id)
+            .await
             .map(|p| p.state)
             .unwrap_or(ConnectionState::Disconnected);
-        
+
         if current_state == ConnectionState::Connected {
             // Peer is still connected (probably via another connection), don't mark as disconnected
             debug!("Peer {} is still connected, skipping disconnect", peer_id);
@@ -519,13 +524,19 @@ impl Node {
 
                         // Cleanup - only mark as disconnected if we're not already connected via another connection
                         // Check if peer is still connected (might have reconnected)
-                        let current_state = self.peer_manager.get_peer(&actual_peer_id).await
+                        let current_state = self
+                            .peer_manager
+                            .get_peer(&actual_peer_id)
+                            .await
                             .map(|p| p.state)
                             .unwrap_or(ConnectionState::Disconnected);
-                        
+
                         if current_state == ConnectionState::Connected {
                             // Peer is still connected (probably via another connection), don't mark as disconnected
-                            debug!("Peer {} is still connected, skipping disconnect", actual_peer_id);
+                            debug!(
+                                "Peer {} is still connected, skipping disconnect",
+                                actual_peer_id
+                            );
                         } else {
                             // Mark as disconnected only if not already connected
                             self.peer_manager
@@ -573,7 +584,11 @@ impl Node {
         {
             let mut senders = self.message_senders.write().await;
             senders.insert(peer_id.clone(), tx);
-            info!("Created message channel for peer {} (total channels: {})", peer_id, senders.len());
+            info!(
+                "Created message channel for peer {} (total channels: {})",
+                peer_id,
+                senders.len()
+            );
         }
 
         // Split stream for reading and writing (owned halves)
@@ -709,7 +724,9 @@ impl Node {
                     if let Some(ping_time) = pending.remove(&peer_id) {
                         let latency = ping_time.elapsed();
                         debug!("Latency to {}: {:?}", peer_id, latency);
-                        self.peer_manager.update_peer_latency(&peer_id, latency).await;
+                        self.peer_manager
+                            .update_peer_latency(&peer_id, latency)
+                            .await;
                     } else {
                         // Pong received but no pending ping (might be from another connection)
                         debug!("Received pong from {} but no pending ping found", peer_id);
@@ -720,11 +737,13 @@ impl Node {
                     message_id,
                 } => {
                     // Try to parse as MeshMessage for routing
-                    let is_mesh_message = if let Ok(json_value) = serde_json::from_slice::<serde_json::Value>(&payload) {
+                    let is_mesh_message = if let Ok(json_value) =
+                        serde_json::from_slice::<serde_json::Value>(&payload)
+                    {
                         // Check if it has MeshMessage structure (from, to, data, message_id, ttl, path)
-                        json_value.get("from").is_some() && 
-                        json_value.get("message_id").is_some() &&
-                        json_value.get("ttl").is_some()
+                        json_value.get("from").is_some()
+                            && json_value.get("message_id").is_some()
+                            && json_value.get("ttl").is_some()
                     } else {
                         false
                     };
@@ -733,9 +752,13 @@ impl Node {
                         // Try to parse as MeshMessage and handle routing
                         if let Ok(protocol_msg) = serde_json::from_slice::<Message>(&payload) {
                             if let Message::MeshMessage { .. } = protocol_msg {
-                                if let Some(mesh_msg) = MeshMessage::from_protocol_message(&protocol_msg) {
+                                if let Some(mesh_msg) =
+                                    MeshMessage::from_protocol_message(&protocol_msg)
+                                {
                                     // Handle as mesh message for routing
-                                    if let Err(e) = self.handle_mesh_message(mesh_msg, &peer_id).await {
+                                    if let Err(e) =
+                                        self.handle_mesh_message(mesh_msg, &peer_id).await
+                                    {
                                         warn!("Error handling mesh message from Data: {}", e);
                                     }
                                     // Continue to also show content
@@ -745,12 +768,15 @@ impl Node {
                     }
 
                     // Try to parse as MeshMessage JSON to extract content
-                    let content_str = if let Ok(json_value) = serde_json::from_slice::<serde_json::Value>(&payload) {
+                    let content_str = if let Ok(json_value) =
+                        serde_json::from_slice::<serde_json::Value>(&payload)
+                    {
                         // Check if it's a MeshMessage structure
                         if let Some(data_field) = json_value.get("data") {
                             if let Some(data_array) = data_field.as_array() {
                                 // Convert JSON array of numbers to bytes
-                                let bytes: Vec<u8> = data_array.iter()
+                                let bytes: Vec<u8> = data_array
+                                    .iter()
                                     .filter_map(|v| v.as_u64().map(|n| n as u8))
                                     .collect();
                                 let bytes_len = bytes.len();
@@ -772,13 +798,13 @@ impl Node {
                         String::from_utf8(payload.clone())
                             .unwrap_or_else(|_| format!("{} bytes (binary)", payload.len()))
                     };
-                    
+
                     let display_content = if content_str.len() > 150 {
                         format!("{}...", &content_str[..150])
                     } else {
                         content_str
                     };
-                    
+
                     info!(
                         "📨 Received data message {} from {}: {} bytes\n   Content: \"{}\"",
                         message_id,
@@ -816,7 +842,11 @@ impl Node {
         {
             let mut senders = self.message_senders.write().await;
             senders.remove(&peer_id);
-            debug!("Removed message channel for peer {} (remaining channels: {})", peer_id, senders.len());
+            debug!(
+                "Removed message channel for peer {} (remaining channels: {})",
+                peer_id,
+                senders.len()
+            );
         }
         writer_handle.abort();
 
@@ -879,6 +909,7 @@ impl Node {
 
     /// Send a message to a peer (encrypts if session key is available)
     /// This is a convenience method that uses the message channel
+    #[allow(dead_code)]
     async fn send_message(
         &self,
         stream: &mut TcpStream,
@@ -1073,7 +1104,7 @@ impl Node {
         // Check if message is for us (broadcast or directed to us)
         let is_broadcast = message.to.is_none();
         let is_for_us = self.router.is_for_us(&message);
-        
+
         if is_for_us {
             info!(
                 "Received mesh message {} for us from {}",
@@ -1083,7 +1114,7 @@ impl Node {
                 .emit("mesh_message_received", Some(&message_id))
                 .await;
             // TODO: Deliver to application layer
-            
+
             // If it's a directed message (not broadcast), don't forward
             if !is_broadcast {
                 return Ok(());
@@ -1093,10 +1124,12 @@ impl Node {
 
         // Forward to other peers using AI-routing (select best peers based on metrics)
         let all_peers = self.peer_manager.get_all_peers().await;
-        
+
         // Use AI-routing to select best peers (top 3 by default, or all if less than 3)
         let max_forward_peers = 3;
-        let forward_peers = self.router.get_best_forward_peers(&message, &all_peers, max_forward_peers);
+        let forward_peers =
+            self.router
+                .get_best_forward_peers(&message, &all_peers, max_forward_peers);
 
         if !forward_peers.is_empty() {
             let forward_msg = self.router.prepare_for_forwarding(&message);
@@ -1143,7 +1176,7 @@ impl Node {
 
             let available_peers_log: Vec<PeerMetricsSnapshot> = all_peers
                 .iter()
-                .map(|peer| PeerMetricsSnapshot::from(peer))
+                .map(PeerMetricsSnapshot::from)
                 .collect();
 
             let log_entry = RoutingLogEntry {
@@ -1167,8 +1200,10 @@ impl Node {
                 if let Some(peer) = all_peers.iter().find(|p| p.node_id == peer_id) {
                     if peer.is_connected() {
                         // Emit event for visualization
-                        self.event_emitter.emit("message_sent", Some(&peer_id)).await;
-                        
+                        self.event_emitter
+                            .emit("message_sent", Some(&peer_id))
+                            .await;
+
                         // Send via existing connection channel
                         let data_msg = Message::Data {
                             payload: serde_json::to_vec(&protocol_msg).unwrap_or_default(),
@@ -1178,10 +1213,14 @@ impl Node {
                         let senders = self.message_senders.read().await;
                         if let Some(sender) = senders.get(&peer_id) {
                             if let Err(e) = sender.send(data_msg) {
-                                warn!("Failed to forward message to {}: channel closed ({})", peer_id, e);
+                                warn!(
+                                    "Failed to forward message to {}: channel closed ({})",
+                                    peer_id, e
+                                );
                             } else {
-                                debug!("Forwarded mesh message {} to {} (score: {:.2})", 
-                                    forward_msg.message_id, 
+                                debug!(
+                                    "Forwarded mesh message {} to {} (score: {:.2})",
+                                    forward_msg.message_id,
                                     peer_id,
                                     Router::calculate_peer_score(&peer.metrics)
                                 );
@@ -1205,7 +1244,7 @@ impl Node {
         } else {
             content_preview
         };
-        
+
         let mesh_msg = MeshMessage::new(self.id.clone(), to.clone(), data);
         let message_id = mesh_msg.message_id.clone();
         let protocol_msg = mesh_msg.to_protocol_message();
@@ -1213,9 +1252,13 @@ impl Node {
         // Check active connections via message_senders (more reliable than peer state)
         let senders = self.message_senders.read().await;
         let active_peer_ids: Vec<String> = senders.keys().cloned().collect();
-        
-        info!("send_mesh_message: active peer channels: {:?} (total: {})", active_peer_ids, active_peer_ids.len());
-        
+
+        info!(
+            "send_mesh_message: active peer channels: {:?} (total: {})",
+            active_peer_ids,
+            active_peer_ids.len()
+        );
+
         if active_peer_ids.is_empty() {
             return Err(MeshError::Protocol("No connected peers".to_string()));
         }
@@ -1233,7 +1276,7 @@ impl Node {
         } else {
             active_peer_ids
         };
-        
+
         info!(
             "📤 Sending mesh message {} to {} peer(s)\n   Content: {}",
             message_id,
@@ -1254,12 +1297,19 @@ impl Node {
 
             if let Some(sender) = senders.get(peer_id) {
                 if let Err(e) = sender.send(data_msg) {
-                    warn!("Failed to send message to {}: channel closed ({})", peer_id, e);
+                    warn!(
+                        "Failed to send message to {}: channel closed ({})",
+                        peer_id, e
+                    );
                 } else {
                     info!("Message {} queued for sending to {}", message_id, peer_id);
                 }
             } else {
-                warn!("No message channel found for peer {} (available: {:?})", peer_id, senders.keys().collect::<Vec<_>>());
+                warn!(
+                    "No message channel found for peer {} (available: {:?})",
+                    peer_id,
+                    senders.keys().collect::<Vec<_>>()
+                );
             }
         }
 

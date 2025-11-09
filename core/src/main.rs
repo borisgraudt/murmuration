@@ -22,7 +22,10 @@ async fn main() -> anyhow::Result<()> {
     let node = Node::new(config).map_err(|e| anyhow::anyhow!("Failed to create node: {}", e))?;
     info!("🚀 Starting MeshLink P2P Node");
     info!("   Node ID: {}", node.id);
-    info!("   Protocol Version: {}", meshlink_core::p2p::PROTOCOL_VERSION);
+    info!(
+        "   Protocol Version: {}",
+        meshlink_core::p2p::PROTOCOL_VERSION
+    );
 
     // Start the node (this will block until shutdown)
     node.start()
