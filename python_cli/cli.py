@@ -51,17 +51,12 @@ class MeshLinkClient:
         except:
             return False
     
-    def _send_request(self, command: str, args: Dict[str, Any] = None) -> Dict[str, Any]:
+    def _send_request(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """Send a request to the API server"""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(5.0)
             sock.connect(('127.0.0.1', self.api_port))
-            
-            request = {
-                "command": command,
-                "args": args or {}
-            }
             
             data = json.dumps(request).encode('utf-8')
             sock.sendall(data + b'\n')
@@ -80,30 +75,43 @@ class MeshLinkClient:
             response = json.loads(response_data.decode('utf-8').strip())
             return response
         except Exception as e:
-            return {"error": str(e)}
+            return {"success": False, "error": str(e)}
     
     def send_message(self, to: Optional[str], message: str) -> bool:
         """Send a message to a peer or broadcast"""
-        args = {"message": message}
         if to:
-            args["to"] = to
+            request = {
+                "command": "send",
+                "peer_id": to,
+                "message": message
+            }
+        else:
+            request = {
+                "command": "broadcast",
+                "message": message
+            }
         
-        response = self._send_request("send" if to else "broadcast", args)
-        if "error" in response:
-            print(f"Error: {response['error']}")
+        response = self._send_request(request)
+        if not response.get("success", False) or "error" in response:
+            print(f"Error: {response.get('error', 'Unknown error')}")
             return False
         
-        print(f"Message sent: {response.get('message_id', 'unknown')}")
+        data = response.get("data", {})
+        message_id = data.get("message_id", "unknown")
+        print(f"Message sent: {message_id}")
         return True
     
     def list_peers(self):
         """List all known peers"""
-        response = self._send_request("peers")
-        if "error" in response:
-            print(f"Error: {response['error']}")
+        request = {"command": "peers"}
+        response = self._send_request(request)
+        
+        if not response.get("success", False) or "error" in response:
+            print(f"Error: {response.get('error', 'Unknown error')}")
             return
         
-        peers = response.get("peers", [])
+        data = response.get("data", {})
+        peers = data.get("peers", [])
         if not peers:
             print("No peers connected")
             return
@@ -113,19 +121,22 @@ class MeshLinkClient:
         for peer in peers:
             state = peer.get("state", "unknown")
             addr = peer.get("address", "unknown")
-            node_id = peer.get("node_id", "unknown")
+            node_id = peer.get("id", "unknown")
             print(f"{node_id[:8]}... @ {addr} [{state}]")
     
     def show_status(self):
         """Show node status"""
-        response = self._send_request("status")
-        if "error" in response:
-            print(f"Error: {response['error']}")
+        request = {"command": "status"}
+        response = self._send_request(request)
+        
+        if not response.get("success", False) or "error" in response:
+            print(f"Error: {response.get('error', 'Unknown error')}")
             return
         
-        node_id = response.get("node_id", "unknown")
-        connected = response.get("connected_peers", 0)
-        total = response.get("total_peers", 0)
+        data = response.get("data", {})
+        node_id = data.get("node_id", "unknown")
+        connected = data.get("connected_peers", 0)
+        total = data.get("total_peers", 0)
         
         print(f"\nNode Status:")
         print("-" * 60)

@@ -168,6 +168,27 @@ impl Router {
         forward_msg
     }
 
+    /// Calculate routing score for a peer based on metrics (higher is better)
+    pub fn calculate_peer_score(peer_metrics: &crate::p2p::peer::PeerMetrics) -> f64 {
+        // Latency score: lower latency = higher score (normalize to 0-1, assuming max 1s latency)
+        let latency_score = peer_metrics
+            .latency
+            .map(|lat| {
+                let lat_secs = lat.as_secs_f64();
+                (1.0 - (lat_secs.min(1.0))).max(0.0)
+            })
+            .unwrap_or(0.5); // Default score if no latency data
+
+        // Uptime score: longer uptime = higher score (normalize to 1 hour)
+        let uptime_score = (peer_metrics.uptime.as_secs_f64() / 3600.0).min(1.0);
+
+        // Reliability score: based on ping success rate
+        let reliability = peer_metrics.reliability_score() as f64;
+
+        // Weighted combination: 40% latency, 20% uptime, 40% reliability
+        0.4 * latency_score + 0.2 * uptime_score + 0.4 * reliability
+    }
+
     /// Get list of peers to forward to (flooding: all except sender)
     pub fn get_forward_peers(&self, message: &MeshMessage, all_peers: &[String]) -> Vec<String> {
         all_peers
@@ -179,6 +200,42 @@ impl Router {
                 !message.path.contains(peer_id)
             })
             .cloned()
+            .collect()
+    }
+
+    /// Get best peers to forward to based on metrics (AI-routing)
+    /// Returns peers sorted by score (best first), limited to top N
+    pub fn get_best_forward_peers(
+        &self,
+        message: &MeshMessage,
+        peer_infos: &[crate::p2p::peer::PeerInfo],
+        max_peers: usize,
+    ) -> Vec<String> {
+        // Filter and score peers
+        let mut scored_peers: Vec<(String, f64)> = peer_infos
+            .iter()
+            .filter(|peer| {
+                // Don't forward to sender
+                peer.node_id != message.from &&
+                // Don't forward to nodes already in path (loop prevention)
+                !message.path.contains(&peer.node_id) &&
+                // Only consider connected peers
+                peer.is_connected()
+            })
+            .map(|peer| {
+                let score = Self::calculate_peer_score(&peer.metrics);
+                (peer.node_id.clone(), score)
+            })
+            .collect();
+
+        // Sort by score (descending - best first)
+        scored_peers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        // Return top N peer IDs
+        scored_peers
+            .into_iter()
+            .take(max_peers)
+            .map(|(peer_id, _score)| peer_id)
             .collect()
     }
 

@@ -24,6 +24,66 @@ pub enum ConnectionState {
     Closing,
 }
 
+/// Peer metrics for AI routing
+#[derive(Debug, Clone)]
+pub struct PeerMetrics {
+    /// Average latency (measured via ping/pong)
+    pub latency: Option<Duration>,
+    /// Uptime (how long peer has been connected)
+    pub uptime: Duration,
+    /// Number of successful pings
+    pub ping_count: u32,
+    /// Number of failed pings
+    pub ping_failures: u32,
+    /// Last ping timestamp
+    pub last_ping: Option<Instant>,
+}
+
+impl Default for PeerMetrics {
+    fn default() -> Self {
+        Self {
+            latency: None,
+            uptime: Duration::ZERO,
+            ping_count: 0,
+            ping_failures: 0,
+            last_ping: None,
+        }
+    }
+}
+
+impl PeerMetrics {
+    /// Update latency with new measurement (exponential moving average)
+    pub fn update_latency(&mut self, new_latency: Duration) {
+        const ALPHA: f64 = 0.3; // Smoothing factor
+        self.latency = Some(
+            self.latency
+                .map(|old| {
+                    let old_ms = old.as_secs_f64() * 1000.0;
+                    let new_ms = new_latency.as_secs_f64() * 1000.0;
+                    let smoothed = ALPHA * new_ms + (1.0 - ALPHA) * old_ms;
+                    Duration::from_millis(smoothed as u64)
+                })
+                .unwrap_or(new_latency),
+        );
+        self.ping_count += 1;
+        self.last_ping = Some(Instant::now());
+    }
+
+    /// Record a ping failure
+    pub fn record_ping_failure(&mut self) {
+        self.ping_failures += 1;
+    }
+
+    /// Calculate reliability score (0.0 to 1.0)
+    pub fn reliability_score(&self) -> f32 {
+        let total_pings = self.ping_count + self.ping_failures;
+        if total_pings == 0 {
+            return 0.5; // Default score
+        }
+        (self.ping_count as f32 / total_pings as f32).clamp(0.0, 1.0)
+    }
+}
+
 /// Information about a peer
 #[derive(Debug, Clone)]
 pub struct PeerInfo {
@@ -35,6 +95,7 @@ pub struct PeerInfo {
     pub connected_at: Option<Instant>,
     pub connection_attempts: u32,
     pub added_at: Instant, // When this peer was first added
+    pub metrics: PeerMetrics, // Metrics for AI routing
 }
 
 impl PeerInfo {
@@ -49,6 +110,7 @@ impl PeerInfo {
             connected_at: None,
             connection_attempts: 0,
             added_at: Instant::now(),
+            metrics: PeerMetrics::default(),
         }
     }
 
@@ -60,6 +122,24 @@ impl PeerInfo {
     /// Update last seen timestamp
     pub fn update_last_seen(&mut self) {
         self.last_seen = Some(Instant::now());
+    }
+
+    /// Update uptime based on connected_at (call periodically to keep metrics fresh)
+    pub fn update_uptime(&mut self) {
+        if let Some(connected_at) = self.connected_at {
+            self.metrics.uptime = connected_at.elapsed();
+        } else {
+            self.metrics.uptime = Duration::ZERO;
+        }
+    }
+
+    /// Get current uptime
+    pub fn get_uptime(&self) -> Duration {
+        if let Some(connected_at) = self.connected_at {
+            connected_at.elapsed()
+        } else {
+            Duration::ZERO
+        }
     }
 
     /// Check if peer should be considered stale
@@ -123,6 +203,10 @@ impl PeerManager {
             if state == ConnectionState::Connected {
                 peer.connected_at = Some(Instant::now());
                 peer.update_last_seen();
+                peer.update_uptime();
+            } else if state == ConnectionState::Disconnected {
+                // Reset uptime when disconnected
+                peer.metrics.uptime = Duration::ZERO;
             }
         }
     }
@@ -183,6 +267,25 @@ impl PeerManager {
         let mut peers = self.peers.write().await;
         if let Some(peer) = peers.get_mut(node_id) {
             peer.update_last_seen();
+            peer.update_uptime();
+        }
+    }
+
+    /// Update peer latency (called after ping/pong)
+    pub async fn update_peer_latency(&self, node_id: &str, latency: Duration) {
+        let mut peers = self.peers.write().await;
+        if let Some(peer) = peers.get_mut(node_id) {
+            peer.metrics.update_latency(latency);
+            peer.update_last_seen();
+            peer.update_uptime();
+        }
+    }
+
+    /// Record ping failure for a peer
+    pub async fn record_ping_failure(&self, node_id: &str) {
+        let mut peers = self.peers.write().await;
+        if let Some(peer) = peers.get_mut(node_id) {
+            peer.metrics.record_ping_failure();
         }
     }
 
@@ -190,111 +293,211 @@ impl PeerManager {
     pub async fn perform_handshake(
         &self,
         stream: &mut TcpStream,
-        _is_outgoing: bool,
+        is_outgoing: bool,
         encryption_manager: Option<&crate::p2p::encryption::EncryptionManager>,
         session_keys: Option<&crate::p2p::encryption::SessionKeyManager>,
     ) -> Result<(String, u8, Option<rsa::RsaPublicKey>)> {
         use crate::p2p::encryption::EncryptionManager;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-        // Read handshake
-        let mut len_buf = [0u8; 4];
-        stream
-            .read_exact(&mut len_buf)
-            .await
-            .map_err(|e| MeshError::Peer(format!("Failed to read handshake length: {}", e)))?;
-        let len = u32::from_be_bytes(len_buf) as usize;
-
-        if len > 65536 {
-            return Err(MeshError::Peer("Handshake message too large".to_string()));
-        }
-
-        let mut buf = vec![0u8; len];
-        stream
-            .read_exact(&mut buf)
-            .await
-            .map_err(|e| MeshError::Peer(format!("Failed to read handshake: {}", e)))?;
-
-        // Parse message from payload
-        let message: Message = Message::from_bytes(&buf)
-            .map_err(|e| MeshError::Peer(format!("Failed to parse handshake message: {}", e)))?;
-
-        let (peer_id, protocol_version, peer_public_key) = match message {
-            Message::Handshake {
-                node_id,
-                protocol_version,
-                listen_port: _,
-                public_key,
-            } => {
-                // Parse peer's public key if provided
-                let peer_pub_key = if let Some(pub_key_str) = &public_key {
-                    Some(EncryptionManager::parse_public_key(pub_key_str)?)
-                } else {
-                    None
-                };
-
-                (node_id, protocol_version, peer_pub_key)
-            }
-            _ => return Err(MeshError::Peer("Expected handshake message".to_string())),
-        };
-
-        // Send handshake ack
-        let our_public_key = if let Some(enc_mgr) = encryption_manager {
-            enc_mgr.get_public_key_string()?
-        } else {
-            String::new()
-        };
-
-        // Generate and encrypt session key if we have encryption manager
-        let (encrypted_session_key, nonce) =
-            if let (Some(enc_mgr), Some(sess_keys)) = (encryption_manager, session_keys) {
-                if let Some(peer_pub_key) = &peer_public_key {
-                    // Generate AES session key
-                    let (aes_key, nonce_bytes) = EncryptionManager::generate_session_key();
-
-                    // Encrypt session key with peer's public key
-                    #[allow(deprecated)] // GenericArray::as_slice is deprecated
-                    let encrypted_key =
-                        enc_mgr.encrypt_with_public_key(aes_key.as_slice(), peer_pub_key)?;
-
-                    // Store session key
-                    sess_keys
-                        .set_session_key(peer_id.clone(), aes_key, nonce_bytes.clone())
-                        .await;
-
-                    (Some(encrypted_key), Some(nonce_bytes))
-                } else {
-                    (None, None)
-                }
+        if is_outgoing {
+            // For outgoing connection: send handshake first, then read ack
+            let our_public_key = if let Some(enc_mgr) = encryption_manager {
+                enc_mgr.get_public_key_string()?
             } else {
-                (None, None)
+                String::new()
             };
 
-        let ack_message = Message::HandshakeAck {
-            node_id: self.our_node_id.clone(),
-            protocol_version: PROTOCOL_VERSION,
-            public_key: Some(our_public_key),
-            encrypted_session_key,
-            nonce,
-        };
+            let handshake_message = Message::Handshake {
+                node_id: self.our_node_id.clone(),
+                protocol_version: PROTOCOL_VERSION,
+                listen_port: self.our_listen_port,
+                public_key: Some(our_public_key),
+            };
 
-        let ack_bytes = ack_message.to_bytes().map_err(MeshError::Serialization)?;
-        let len = ack_bytes.len() as u32;
+            let handshake_bytes = handshake_message.to_bytes().map_err(MeshError::Serialization)?;
+            let len = handshake_bytes.len() as u32;
 
-        stream
-            .write_all(&len.to_be_bytes())
-            .await
-            .map_err(|e| MeshError::Peer(format!("Failed to write handshake ack length: {}", e)))?;
-        stream
-            .write_all(&ack_bytes)
-            .await
-            .map_err(|e| MeshError::Peer(format!("Failed to write handshake ack: {}", e)))?;
-        stream
-            .flush()
-            .await
-            .map_err(|e| MeshError::Peer(format!("Failed to flush handshake ack: {}", e)))?;
+            stream
+                .write_all(&len.to_be_bytes())
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to write handshake length: {}", e)))?;
+            stream
+                .write_all(&handshake_bytes)
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to write handshake: {}", e)))?;
+            stream
+                .flush()
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to flush handshake: {}", e)))?;
 
-        Ok((peer_id, protocol_version, peer_public_key))
+            // Read handshake ack
+            let mut len_buf = [0u8; 4];
+            stream
+                .read_exact(&mut len_buf)
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to read handshake ack length: {}", e)))?;
+            let len = u32::from_be_bytes(len_buf) as usize;
+
+            if len > 65536 {
+                return Err(MeshError::Peer("Handshake ack message too large".to_string()));
+            }
+
+            let mut buf = vec![0u8; len];
+            stream
+                .read_exact(&mut buf)
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to read handshake ack: {}", e)))?;
+
+            // Parse handshake ack
+            let message: Message = Message::from_bytes(&buf)
+                .map_err(|e| MeshError::Peer(format!("Failed to parse handshake ack message: {}", e)))?;
+
+            let (peer_id, protocol_version, peer_public_key) = match message {
+                Message::HandshakeAck {
+                    node_id,
+                    protocol_version,
+                    public_key,
+                    encrypted_session_key,
+                    nonce,
+                } => {
+                    // Parse peer's public key if provided
+                    let peer_pub_key = if let Some(pub_key_str) = &public_key {
+                        Some(EncryptionManager::parse_public_key(pub_key_str)?)
+                    } else {
+                        None
+                    };
+
+                    // Decrypt and store session key if provided
+                    if let (Some(enc_mgr), Some(sess_keys), Some(enc_key), Some(nonce_bytes)) =
+                        (encryption_manager, session_keys, encrypted_session_key, nonce)
+                    {
+                        // Decrypt session key with our private key
+                        match enc_mgr.decrypt_with_private_key(&enc_key).await {
+                            Ok(aes_key_bytes) => {
+                                // Convert Vec<u8> to Key<Aes256Gcm>
+                                #[allow(deprecated)] // GenericArray::from_slice is deprecated
+                                let aes_key = aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&aes_key_bytes);
+
+                                // Store session key
+                                sess_keys
+                                    .set_session_key(node_id.clone(), *aes_key, nonce_bytes)
+                                    .await;
+                            }
+                            Err(e) => {
+                                // Log error but continue without encryption
+                                tracing::warn!("Failed to decrypt session key: {}", e);
+                            }
+                        }
+                    }
+
+                    (node_id, protocol_version, peer_pub_key)
+                }
+                _ => return Err(MeshError::Peer("Expected handshake ack message".to_string())),
+            };
+
+            Ok((peer_id, protocol_version, peer_public_key))
+        } else {
+            // For incoming connection: read handshake first, then send ack
+            // Read handshake
+            let mut len_buf = [0u8; 4];
+            stream
+                .read_exact(&mut len_buf)
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to read handshake length: {}", e)))?;
+            let len = u32::from_be_bytes(len_buf) as usize;
+
+            if len > 65536 {
+                return Err(MeshError::Peer("Handshake message too large".to_string()));
+            }
+
+            let mut buf = vec![0u8; len];
+            stream
+                .read_exact(&mut buf)
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to read handshake: {}", e)))?;
+
+            // Parse message from payload
+            let message: Message = Message::from_bytes(&buf)
+                .map_err(|e| MeshError::Peer(format!("Failed to parse handshake message: {}", e)))?;
+
+            let (peer_id, protocol_version, peer_public_key) = match message {
+                Message::Handshake {
+                    node_id,
+                    protocol_version,
+                    listen_port: _,
+                    public_key,
+                } => {
+                    // Parse peer's public key if provided
+                    let peer_pub_key = if let Some(pub_key_str) = &public_key {
+                        Some(EncryptionManager::parse_public_key(pub_key_str)?)
+                    } else {
+                        None
+                    };
+
+                    (node_id, protocol_version, peer_pub_key)
+                }
+                _ => return Err(MeshError::Peer("Expected handshake message".to_string())),
+            };
+
+            // Send handshake ack
+            let our_public_key = if let Some(enc_mgr) = encryption_manager {
+                enc_mgr.get_public_key_string()?
+            } else {
+                String::new()
+            };
+
+            // Generate and encrypt session key if we have encryption manager
+            let (encrypted_session_key, nonce) =
+                if let (Some(enc_mgr), Some(sess_keys)) = (encryption_manager, session_keys) {
+                    if let Some(peer_pub_key) = &peer_public_key {
+                        // Generate AES session key
+                        let (aes_key, nonce_bytes) = EncryptionManager::generate_session_key();
+
+                        // Encrypt session key with peer's public key
+                        #[allow(deprecated)] // GenericArray::as_slice is deprecated
+                        let encrypted_key =
+                            enc_mgr.encrypt_with_public_key(aes_key.as_slice(), peer_pub_key)?;
+
+                        // Store session key
+                        sess_keys
+                            .set_session_key(peer_id.clone(), aes_key, nonce_bytes.clone())
+                            .await;
+
+                        (Some(encrypted_key), Some(nonce_bytes))
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+            let ack_message = Message::HandshakeAck {
+                node_id: self.our_node_id.clone(),
+                protocol_version: PROTOCOL_VERSION,
+                public_key: Some(our_public_key),
+                encrypted_session_key,
+                nonce,
+            };
+
+            let ack_bytes = ack_message.to_bytes().map_err(MeshError::Serialization)?;
+            let len = ack_bytes.len() as u32;
+
+            stream
+                .write_all(&len.to_be_bytes())
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to write handshake ack length: {}", e)))?;
+            stream
+                .write_all(&ack_bytes)
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to write handshake ack: {}", e)))?;
+            stream
+                .flush()
+                .await
+                .map_err(|e| MeshError::Peer(format!("Failed to flush handshake ack: {}", e)))?;
+
+            Ok((peer_id, protocol_version, peer_public_key))
+        }
     }
 }
 

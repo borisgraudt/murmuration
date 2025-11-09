@@ -1,4 +1,5 @@
 use crate::ai::router::{MeshMessage, Router};
+use crate::ai::routing_logger::{RoutingLogger, RoutingLogEntry, PeerSelection, PeerMetricsSnapshot, MessageContext};
 /// Main node implementation
 use crate::config::Config;
 use crate::error::{MeshError, Result};
@@ -7,9 +8,10 @@ use crate::p2p::encryption::{EncryptionManager, SessionKeyManager};
 use crate::p2p::peer::{ConnectionState, PeerManager};
 use crate::p2p::protocol::{Frame, Message};
 use crate::utils::event_emitter::EventEmitter;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::signal;
 use tokio::sync::{mpsc, RwLock};
@@ -40,8 +42,17 @@ pub struct Node {
     /// Router for mesh messages
     router: Router,
 
+    /// Routing logger for AI training data
+    routing_logger: RoutingLogger,
+
     /// Shutdown signal
     shutdown: Arc<RwLock<bool>>,
+
+    /// Message senders for each peer connection
+    message_senders: Arc<RwLock<HashMap<String, mpsc::UnboundedSender<Message>>>>,
+
+    /// Pending pings for latency measurement (peer_id -> timestamp when ping was sent)
+    pending_pings: Arc<RwLock<HashMap<String, Instant>>>,
 }
 
 impl Node {
@@ -53,6 +64,7 @@ impl Node {
         let encryption_manager = EncryptionManager::new()?;
         let session_keys = SessionKeyManager::new();
         let router = Router::new(id.clone());
+        let routing_logger = RoutingLogger::new();
 
         info!("Created new node with ID: {}", id);
 
@@ -64,7 +76,10 @@ impl Node {
             encryption_manager,
             session_keys,
             router,
+            routing_logger,
             shutdown: Arc::new(RwLock::new(false)),
+            message_senders: Arc::new(RwLock::new(HashMap::new())),
+            pending_pings: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -84,6 +99,10 @@ impl Node {
         }
 
         self.event_emitter.emit("started", None).await;
+
+        // Initialize routing logger (logs to logs/ai_routing_logs.jsonl)
+        self.routing_logger.init(None).await;
+        info!("AI routing logs will be saved to: logs/ai_routing_logs.jsonl");
 
         // Spawn all tasks
         let listener_handle = {
@@ -131,15 +150,19 @@ impl Node {
         *self.shutdown.write().await = true;
         info!("Shutdown signal received, stopping node...");
 
-        // Wait for tasks to complete
-        let _ = tokio::join!(
-            listener_handle,
-            connector_handle,
-            heartbeat_handle,
-            keepalive_handle,
-            discovery_handle,
-            api_handle,
-        );
+        // Give tasks a moment to see the shutdown flag
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Abort all tasks to ensure clean shutdown
+        listener_handle.abort();
+        connector_handle.abort();
+        heartbeat_handle.abort();
+        keepalive_handle.abort();
+        discovery_handle.abort();
+        api_handle.abort();
+
+        // Wait a bit for tasks to clean up
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         info!("Node stopped");
         Ok(())
@@ -291,7 +314,7 @@ impl Node {
             .peer_manager
             .perform_handshake(
                 &mut stream,
-                true,
+                false, // false = incoming connection
                 Some(&self.encryption_manager),
                 Some(&self.session_keys),
             )
@@ -325,18 +348,29 @@ impl Node {
 
         self.event_emitter.emit("connected", Some(&peer_id)).await;
 
-        // Handle connection
+        // Handle connection (this will block until connection closes)
         if let Err(e) = self.handle_connection(stream, peer_id.clone(), addr).await {
             error!("Error in connection with {}: {}", peer_id, e);
         }
 
-        // Cleanup
-        self.peer_manager
-            .update_peer_state(&peer_id, ConnectionState::Disconnected)
-            .await;
-        self.event_emitter
-            .emit("disconnected", Some(&peer_id))
-            .await;
+        // Cleanup - only mark as disconnected if we're not already connected via another connection
+        // Check if peer is still connected (might have reconnected)
+        let current_state = self.peer_manager.get_peer(&peer_id).await
+            .map(|p| p.state)
+            .unwrap_or(ConnectionState::Disconnected);
+        
+        if current_state == ConnectionState::Connected {
+            // Peer is still connected (probably via another connection), don't mark as disconnected
+            debug!("Peer {} is still connected, skipping disconnect", peer_id);
+        } else {
+            // Mark as disconnected only if not already connected
+            self.peer_manager
+                .update_peer_state(&peer_id, ConnectionState::Disconnected)
+                .await;
+            self.event_emitter
+                .emit("disconnected", Some(&peer_id))
+                .await;
+        }
 
         Ok(())
     }
@@ -448,7 +482,7 @@ impl Node {
                     .peer_manager
                     .perform_handshake(
                         &mut stream,
-                        false,
+                        true, // true = outgoing connection
                         Some(&self.encryption_manager),
                         Some(&self.session_keys),
                     )
@@ -475,7 +509,7 @@ impl Node {
                             .emit("connected", Some(&actual_peer_id))
                             .await;
 
-                        // Handle connection
+                        // Handle connection (this will block until connection closes)
                         if let Err(e) = self
                             .handle_connection(stream, actual_peer_id.clone(), addr)
                             .await
@@ -483,13 +517,24 @@ impl Node {
                             error!("Error in connection with {}: {}", actual_peer_id, e);
                         }
 
-                        // Cleanup
-                        self.peer_manager
-                            .update_peer_state(&actual_peer_id, ConnectionState::Disconnected)
-                            .await;
-                        self.event_emitter
-                            .emit("disconnected", Some(&actual_peer_id))
-                            .await;
+                        // Cleanup - only mark as disconnected if we're not already connected via another connection
+                        // Check if peer is still connected (might have reconnected)
+                        let current_state = self.peer_manager.get_peer(&actual_peer_id).await
+                            .map(|p| p.state)
+                            .unwrap_or(ConnectionState::Disconnected);
+                        
+                        if current_state == ConnectionState::Connected {
+                            // Peer is still connected (probably via another connection), don't mark as disconnected
+                            debug!("Peer {} is still connected, skipping disconnect", actual_peer_id);
+                        } else {
+                            // Mark as disconnected only if not already connected
+                            self.peer_manager
+                                .update_peer_state(&actual_peer_id, ConnectionState::Disconnected)
+                                .await;
+                            self.event_emitter
+                                .emit("disconnected", Some(&actual_peer_id))
+                                .await;
+                        }
                     }
                     Err(e) => {
                         error!("Handshake failed with {}: {}", addr, e);
@@ -517,13 +562,54 @@ impl Node {
     /// Handle established connection
     async fn handle_connection(
         &self,
-        mut stream: TcpStream,
+        stream: TcpStream,
         peer_id: String,
         _addr: SocketAddr,
     ) -> Result<()> {
         use tokio::io::AsyncReadExt;
 
+        // Create message channel for this connection
+        let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+        {
+            let mut senders = self.message_senders.write().await;
+            senders.insert(peer_id.clone(), tx);
+            info!("Created message channel for peer {} (total channels: {})", peer_id, senders.len());
+        }
+
+        // Split stream for reading and writing (owned halves)
+        let (mut reader, mut writer) = tokio::io::split(stream);
         let mut len_buf = [0u8; 4];
+
+        // Spawn task to handle outgoing messages
+        let node_clone = self.clone();
+        let peer_id_clone = peer_id.clone();
+        let shutdown_clone = self.shutdown.clone();
+        let writer_handle = tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    msg = rx.recv() => {
+                        match msg {
+                            Some(message) => {
+                                if let Err(e) = node_clone.send_message_to_stream(&mut writer, &peer_id_clone, &message).await {
+                                    warn!("Failed to send message to {}: {}", peer_id_clone, e);
+                                    break;
+                                }
+                            }
+                            None => {
+                                debug!("Message channel closed for {}", peer_id_clone);
+                                break;
+                            }
+                        }
+                    }
+                    _ = sleep(Duration::from_millis(100)) => {
+                        // Check shutdown periodically
+                        if *shutdown_clone.read().await {
+                            break;
+                        }
+                    }
+                }
+            }
+        });
 
         loop {
             if *self.shutdown.read().await {
@@ -531,7 +617,7 @@ impl Node {
             }
 
             // Read frame length
-            match timeout(Duration::from_secs(30), stream.read_exact(&mut len_buf)).await {
+            match timeout(Duration::from_secs(30), reader.read_exact(&mut len_buf)).await {
                 Ok(Ok(_)) => {}
                 Ok(Err(e)) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
                     debug!("Connection closed by peer: {}", peer_id);
@@ -541,12 +627,22 @@ impl Node {
                     return Err(MeshError::Io(e));
                 }
                 Err(_) => {
-                    // Timeout - send ping
+                    // Timeout - send ping and record timestamp for latency measurement
+                    let ping_timestamp = Instant::now();
+                    {
+                        let mut pending = self.pending_pings.write().await;
+                        pending.insert(peer_id.clone(), ping_timestamp);
+                    }
                     let ping = Message::Ping {
                         timestamp: chrono::Utc::now().timestamp(),
                     };
-                    if let Err(e) = self.send_message(&mut stream, &peer_id, &ping).await {
-                        warn!("Failed to send ping: {}", e);
+                    if let Some(sender) = self.message_senders.read().await.get(&peer_id) {
+                        if let Err(_e) = sender.send(ping) {
+                            warn!("Failed to send ping to {}: channel closed", peer_id);
+                            // Remove from pending if send failed
+                            let mut pending = self.pending_pings.write().await;
+                            pending.remove(&peer_id);
+                        }
                     }
                     continue;
                 }
@@ -555,7 +651,7 @@ impl Node {
             let length = u32::from_be_bytes(len_buf) as usize;
             let mut payload = vec![0u8; length];
 
-            timeout(Duration::from_secs(30), stream.read_exact(&mut payload))
+            timeout(Duration::from_secs(30), reader.read_exact(&mut payload))
                 .await
                 .map_err(|_| MeshError::Timeout("Read timeout".to_string()))?
                 .map_err(MeshError::Io)?;
@@ -600,22 +696,95 @@ impl Node {
                 Message::Ping { timestamp } => {
                     debug!("Received ping from {}", peer_id);
                     let pong = Message::Pong { timestamp };
-                    if let Err(e) = self.send_message(&mut stream, &peer_id, &pong).await {
-                        warn!("Failed to send pong: {}", e);
+                    if let Some(sender) = self.message_senders.read().await.get(&peer_id) {
+                        if let Err(_e) = sender.send(pong) {
+                            warn!("Failed to send pong to {}: channel closed", peer_id);
+                        }
                     }
                 }
-                Message::Pong { .. } => {
+                Message::Pong { timestamp: _ } => {
                     debug!("Received pong from {}", peer_id);
+                    // Calculate latency from pending ping
+                    let mut pending = self.pending_pings.write().await;
+                    if let Some(ping_time) = pending.remove(&peer_id) {
+                        let latency = ping_time.elapsed();
+                        debug!("Latency to {}: {:?}", peer_id, latency);
+                        self.peer_manager.update_peer_latency(&peer_id, latency).await;
+                    } else {
+                        // Pong received but no pending ping (might be from another connection)
+                        debug!("Received pong from {} but no pending ping found", peer_id);
+                    }
                 }
                 Message::Data {
                     payload,
                     message_id,
                 } => {
+                    // Try to parse as MeshMessage for routing
+                    let is_mesh_message = if let Ok(json_value) = serde_json::from_slice::<serde_json::Value>(&payload) {
+                        // Check if it has MeshMessage structure (from, to, data, message_id, ttl, path)
+                        json_value.get("from").is_some() && 
+                        json_value.get("message_id").is_some() &&
+                        json_value.get("ttl").is_some()
+                    } else {
+                        false
+                    };
+
+                    if is_mesh_message {
+                        // Try to parse as MeshMessage and handle routing
+                        if let Ok(protocol_msg) = serde_json::from_slice::<Message>(&payload) {
+                            if let Message::MeshMessage { .. } = protocol_msg {
+                                if let Some(mesh_msg) = MeshMessage::from_protocol_message(&protocol_msg) {
+                                    // Handle as mesh message for routing
+                                    if let Err(e) = self.handle_mesh_message(mesh_msg, &peer_id).await {
+                                        warn!("Error handling mesh message from Data: {}", e);
+                                    }
+                                    // Continue to also show content
+                                }
+                            }
+                        }
+                    }
+
+                    // Try to parse as MeshMessage JSON to extract content
+                    let content_str = if let Ok(json_value) = serde_json::from_slice::<serde_json::Value>(&payload) {
+                        // Check if it's a MeshMessage structure
+                        if let Some(data_field) = json_value.get("data") {
+                            if let Some(data_array) = data_field.as_array() {
+                                // Convert JSON array of numbers to bytes
+                                let bytes: Vec<u8> = data_array.iter()
+                                    .filter_map(|v| v.as_u64().map(|n| n as u8))
+                                    .collect();
+                                let bytes_len = bytes.len();
+                                // Try to decode as UTF-8 string
+                                String::from_utf8(bytes)
+                                    .unwrap_or_else(|_| format!("{} bytes (binary)", bytes_len))
+                            } else if let Some(data_str) = data_field.as_str() {
+                                data_str.to_string()
+                            } else {
+                                format!("{} bytes", payload.len())
+                            }
+                        } else {
+                            // Try to decode entire payload as UTF-8
+                            String::from_utf8(payload.clone())
+                                .unwrap_or_else(|_| format!("{} bytes (binary)", payload.len()))
+                        }
+                    } else {
+                        // Try to decode as UTF-8 string directly
+                        String::from_utf8(payload.clone())
+                            .unwrap_or_else(|_| format!("{} bytes (binary)", payload.len()))
+                    };
+                    
+                    let display_content = if content_str.len() > 150 {
+                        format!("{}...", &content_str[..150])
+                    } else {
+                        content_str
+                    };
+                    
                     info!(
-                        "Received data message {} from {}: {} bytes",
+                        "📨 Received data message {} from {}: {} bytes\n   Content: \"{}\"",
                         message_id,
                         peer_id,
-                        payload.len()
+                        payload.len(),
+                        display_content
                     );
                     self.event_emitter
                         .emit("message_received", Some(&peer_id))
@@ -643,10 +812,73 @@ impl Node {
             }
         }
 
+        // Cleanup: remove message sender and close writer task
+        {
+            let mut senders = self.message_senders.write().await;
+            senders.remove(&peer_id);
+            debug!("Removed message channel for peer {} (remaining channels: {})", peer_id, senders.len());
+        }
+        writer_handle.abort();
+
+        Ok(())
+    }
+
+    /// Send a message to a stream (encrypts if session key is available)
+    async fn send_message_to_stream(
+        &self,
+        stream: &mut (impl tokio::io::AsyncWrite + Unpin),
+        peer_id: &str,
+        message: &Message,
+    ) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        // Serialize message
+        let plain_payload = message
+            .to_bytes()
+            .map_err(|e| MeshError::Protocol(format!("Failed to serialize message: {}", e)))?;
+
+        // Encrypt if we have a session key
+        let frame = if let Some(session_key) = self.session_keys.get_session_key(peer_id).await {
+            // Generate new nonce for this message
+            use aes_gcm::aead::{AeadCore, OsRng};
+            let nonce = aes_gcm::Aes256Gcm::generate_nonce(&mut OsRng);
+            #[allow(deprecated)] // GenericArray::as_slice is deprecated
+            let nonce_bytes = nonce.as_slice().to_vec();
+
+            // Encrypt payload
+            match crate::p2p::encryption::EncryptionManager::encrypt_aes(
+                &plain_payload,
+                &session_key.key,
+                &nonce_bytes,
+            ) {
+                Ok(encrypted_data) => Frame::from_encrypted(&nonce_bytes, &encrypted_data),
+                Err(e) => {
+                    warn!(
+                        "Failed to encrypt message to {}: {}, sending plain",
+                        peer_id, e
+                    );
+                    Frame::from_message(message).map_err(|e| {
+                        MeshError::Protocol(format!("Failed to create frame: {}", e))
+                    })?
+                }
+            }
+        } else {
+            // No session key, send plain
+            Frame::from_message(message)
+                .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
+        };
+
+        // Send frame
+        stream
+            .write_all(&frame.to_bytes())
+            .await
+            .map_err(MeshError::Io)?;
+
         Ok(())
     }
 
     /// Send a message to a peer (encrypts if session key is available)
+    /// This is a convenience method that uses the message channel
     async fn send_message(
         &self,
         stream: &mut TcpStream,
@@ -712,6 +944,14 @@ impl Node {
 
             interval.tick().await;
 
+            // Update uptime metrics for all connected peers
+            // This is done by calling update_peer_last_seen which updates uptime
+            let connected = self.peer_manager.get_connected_peers().await;
+            for peer in &connected {
+                // This will update uptime as a side effect
+                self.peer_manager.update_peer_last_seen(&peer.node_id).await;
+            }
+
             let connected = self.peer_manager.get_connected_peers().await;
             let all = self.peer_manager.get_all_peers().await;
 
@@ -765,7 +1005,10 @@ impl Clone for Node {
             encryption_manager: self.encryption_manager.clone(),
             session_keys: self.session_keys.clone(),
             router: self.router.clone(),
+            routing_logger: self.routing_logger.clone(),
             shutdown: self.shutdown.clone(),
+            message_senders: self.message_senders.clone(),
+            pending_pings: self.pending_pings.clone(),
         }
     }
 }
@@ -827,8 +1070,11 @@ impl Node {
         let message_id = message.message_id.clone();
         self.router.mark_seen(&message_id).await;
 
-        // Check if message is for us
-        if self.router.is_for_us(&message) {
+        // Check if message is for us (broadcast or directed to us)
+        let is_broadcast = message.to.is_none();
+        let is_for_us = self.router.is_for_us(&message);
+        
+        if is_for_us {
             info!(
                 "Received mesh message {} for us from {}",
                 message_id, from_peer
@@ -837,27 +1083,110 @@ impl Node {
                 .emit("mesh_message_received", Some(&message_id))
                 .await;
             // TODO: Deliver to application layer
-            return Ok(());
+            
+            // If it's a directed message (not broadcast), don't forward
+            if !is_broadcast {
+                return Ok(());
+            }
+            // For broadcast messages, continue to forward below
         }
 
-        // Forward to other peers (flooding)
+        // Forward to other peers using AI-routing (select best peers based on metrics)
         let all_peers = self.peer_manager.get_all_peers().await;
-        let peer_ids: Vec<String> = all_peers.iter().map(|p| p.node_id.clone()).collect();
-        let forward_peers = self.router.get_forward_peers(&message, &peer_ids);
+        
+        // Use AI-routing to select best peers (top 3 by default, or all if less than 3)
+        let max_forward_peers = 3;
+        let forward_peers = self.router.get_best_forward_peers(&message, &all_peers, max_forward_peers);
 
         if !forward_peers.is_empty() {
             let forward_msg = self.router.prepare_for_forwarding(&message);
-            let _protocol_msg = forward_msg.to_protocol_message();
+            let protocol_msg = forward_msg.to_protocol_message();
 
-            // Forward to each peer
+            // Log selected peers with their scores
+            let peer_scores: Vec<(String, f64)> = forward_peers
+                .iter()
+                .filter_map(|peer_id| {
+                    all_peers
+                        .iter()
+                        .find(|p| p.node_id == *peer_id)
+                        .map(|peer| {
+                            let score = Router::calculate_peer_score(&peer.metrics);
+                            (peer_id.clone(), score)
+                        })
+                })
+                .collect();
+
+            info!(
+                "🎯 AI-Routing: Forwarding mesh message {} to {} peer(s): {:?}",
+                forward_msg.message_id,
+                forward_peers.len(),
+                peer_scores
+                    .iter()
+                    .map(|(id, score)| format!("{} (score: {:.2})", id, score))
+                    .collect::<Vec<_>>()
+            );
+
+            // Log routing decision for AI training
+            let selected_peers_log: Vec<PeerSelection> = peer_scores
+                .iter()
+                .filter_map(|(peer_id, score)| {
+                    all_peers
+                        .iter()
+                        .find(|p| p.node_id == *peer_id)
+                        .map(|peer| PeerSelection {
+                            peer_id: peer_id.clone(),
+                            score: *score,
+                            metrics: PeerMetricsSnapshot::from(peer),
+                        })
+                })
+                .collect();
+
+            let available_peers_log: Vec<PeerMetricsSnapshot> = all_peers
+                .iter()
+                .map(|peer| PeerMetricsSnapshot::from(peer))
+                .collect();
+
+            let log_entry = RoutingLogEntry {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                message_id: forward_msg.message_id.clone(),
+                node_id: self.id.clone(),
+                from_peer: Some(from_peer.to_string()),
+                selected_peers: selected_peers_log,
+                available_peers: available_peers_log,
+                message_context: MessageContext {
+                    ttl: forward_msg.ttl,
+                    path_length: forward_msg.path.len(),
+                    is_broadcast: message.to.is_none(),
+                    target_peer: message.to.clone(),
+                },
+            };
+            self.routing_logger.log_routing_decision(log_entry).await;
+
+            // Forward to each selected peer
             for peer_id in forward_peers {
                 if let Some(peer) = all_peers.iter().find(|p| p.node_id == peer_id) {
-                    if peer.state == ConnectionState::Connected {
-                        // TODO: Forward message via connection
-                        debug!(
-                            "Would forward mesh message {} to {}",
-                            forward_msg.message_id, peer_id
-                        );
+                    if peer.is_connected() {
+                        // Emit event for visualization
+                        self.event_emitter.emit("message_sent", Some(&peer_id)).await;
+                        
+                        // Send via existing connection channel
+                        let data_msg = Message::Data {
+                            payload: serde_json::to_vec(&protocol_msg).unwrap_or_default(),
+                            message_id: forward_msg.message_id.clone(),
+                        };
+
+                        let senders = self.message_senders.read().await;
+                        if let Some(sender) = senders.get(&peer_id) {
+                            if let Err(e) = sender.send(data_msg) {
+                                warn!("Failed to forward message to {}: channel closed ({})", peer_id, e);
+                            } else {
+                                debug!("Forwarded mesh message {} to {} (score: {:.2})", 
+                                    forward_msg.message_id, 
+                                    peer_id,
+                                    Router::calculate_peer_score(&peer.metrics)
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -868,66 +1197,69 @@ impl Node {
 
     /// Send a mesh message to a specific peer or broadcast
     pub async fn send_mesh_message(&self, to: Option<String>, data: Vec<u8>) -> Result<String> {
+        // Show message content for logging (before moving data)
+        let content_preview = String::from_utf8(data.clone())
+            .unwrap_or_else(|_| format!("{} bytes (binary)", data.len()));
+        let content_display = if content_preview.len() > 50 {
+            format!("{}...", &content_preview[..50])
+        } else {
+            content_preview
+        };
+        
         let mesh_msg = MeshMessage::new(self.id.clone(), to.clone(), data);
         let message_id = mesh_msg.message_id.clone();
         let protocol_msg = mesh_msg.to_protocol_message();
 
-        let connected_peers = self.peer_manager.get_connected_peers().await;
-
-        if connected_peers.is_empty() {
+        // Check active connections via message_senders (more reliable than peer state)
+        let senders = self.message_senders.read().await;
+        let active_peer_ids: Vec<String> = senders.keys().cloned().collect();
+        
+        info!("send_mesh_message: active peer channels: {:?} (total: {})", active_peer_ids, active_peer_ids.len());
+        
+        if active_peer_ids.is_empty() {
             return Err(MeshError::Protocol("No connected peers".to_string()));
         }
 
         // Send to specific peer or broadcast to all
         let target_peers: Vec<String> = if let Some(target_id) = &to {
-            if connected_peers.iter().any(|p| &p.node_id == target_id) {
+            if active_peer_ids.iter().any(|id| id == target_id) {
                 vec![target_id.clone()]
             } else {
                 return Err(MeshError::Protocol(format!(
-                    "Peer {} not connected",
-                    target_id
+                    "Peer {} not connected (active peers: {:?})",
+                    target_id, active_peer_ids
                 )));
             }
         } else {
-            connected_peers.iter().map(|p| p.node_id.clone()).collect()
+            active_peer_ids
         };
-
+        
         info!(
-            "Sending mesh message {} to {} peer(s)",
+            "📤 Sending mesh message {} to {} peer(s)\n   Content: {}",
             message_id,
-            target_peers.len()
+            target_peers.len(),
+            content_display
         );
 
-        // For MVP: Send as Data message to connected peers
-        // In future: Use proper mesh routing with forwarding
+        // Send as Data message to connected peers using existing connections
         for peer_id in &target_peers {
             // Emit event for visualization with correct peer_id
             self.event_emitter.emit("message_sent", Some(peer_id)).await;
 
-            if let Some(peer) = connected_peers.iter().find(|p| &p.node_id == peer_id) {
-                // Create a new connection to send the message
-                // This is simplified - in production, you'd use existing connection handles
-                let node = self.clone();
-                let peer_addr = peer.address;
-                let peer_id_clone = peer_id.clone();
-                let msg_clone = protocol_msg.clone();
-                let msg_id_clone = message_id.clone();
+            // Send message through existing connection channel
+            let data_msg = Message::Data {
+                payload: serde_json::to_vec(&protocol_msg).unwrap_or_default(),
+                message_id: message_id.clone(),
+            };
 
-                tokio::spawn(async move {
-                    if let Ok(mut stream) = TcpStream::connect(&peer_addr).await {
-                        // Send as Data message for now (simplified)
-                        let data_msg = Message::Data {
-                            payload: serde_json::to_vec(&msg_clone).unwrap_or_default(),
-                            message_id: msg_id_clone,
-                        };
-                        if let Err(e) = node
-                            .send_message(&mut stream, &peer_id_clone, &data_msg)
-                            .await
-                        {
-                            warn!("Failed to send message to {}: {}", peer_id_clone, e);
-                        }
-                    }
-                });
+            if let Some(sender) = senders.get(peer_id) {
+                if let Err(e) = sender.send(data_msg) {
+                    warn!("Failed to send message to {}: channel closed ({})", peer_id, e);
+                } else {
+                    info!("Message {} queued for sending to {}", message_id, peer_id);
+                }
+            } else {
+                warn!("No message channel found for peer {} (available: {:?})", peer_id, senders.keys().collect::<Vec<_>>());
             }
         }
 

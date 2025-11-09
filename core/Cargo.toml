@@ -1,10 +1,12 @@
 [package]
-name = "core"
+name = "meshlink_core"
 version = "0.1.0"
 edition = "2021"
 default-run = "core"
 
 [lib]
+name = "meshlink_core"
+path = "src/lib.rs"
 doctest = false
 
 
