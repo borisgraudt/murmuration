@@ -1174,10 +1174,8 @@ impl Node {
                 })
                 .collect();
 
-            let available_peers_log: Vec<PeerMetricsSnapshot> = all_peers
-                .iter()
-                .map(PeerMetricsSnapshot::from)
-                .collect();
+            let available_peers_log: Vec<PeerMetricsSnapshot> =
+                all_peers.iter().map(PeerMetricsSnapshot::from).collect();
 
             let log_entry = RoutingLogEntry {
                 timestamp: chrono::Utc::now().to_rfc3339(),
