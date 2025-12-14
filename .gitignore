@@ -17,4 +17,13 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local node identity / keys (generated during tests/runs)
+.ely/
+core/.ely/
 
