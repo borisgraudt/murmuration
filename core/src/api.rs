@@ -3,6 +3,7 @@ use crate::error::{MeshError, Result};
 use crate::node::Node;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
@@ -22,6 +23,12 @@ enum ApiRequest {
     Peers,
     #[serde(rename = "status")]
     Status,
+    #[serde(rename = "ping")]
+    Ping {
+        peer_id: String,
+        #[serde(default)]
+        timeout_ms: Option<u64>,
+    },
 }
 
 /// API response
@@ -167,6 +174,19 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 "connected_peers": connected,
                 "total_peers": total
             })))
+        }
+        ApiRequest::Ping {
+            peer_id,
+            timeout_ms,
+        } => {
+            let timeout = Duration::from_millis(timeout_ms.unwrap_or(1500));
+            match node.ping_peer(&peer_id, timeout).await {
+                Ok(latency) => Ok(ApiResponse::success(serde_json::json!({
+                    "peer_id": peer_id,
+                    "latency_ms": latency.as_secs_f64() * 1000.0
+                }))),
+                Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+            }
         }
     }
 }
