@@ -1,3 +1,4 @@
 # MeshLink Python CLI dependencies
-rich>=13.7.0
+# Note: This CLI uses only standard library (socket, json, sys, os)
+# No external dependencies required
 

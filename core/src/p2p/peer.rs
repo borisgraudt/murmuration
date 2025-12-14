@@ -508,14 +508,6 @@ impl PeerManager {
                 .await
                 .map_err(|e| MeshError::Peer(format!("Failed to flush handshake ack: {}", e)))?;
 
-            // Log handshake completion
-            use crate::p2p::encryption_pqc::is_pqc_available;
-            if is_pqc_available() {
-                tracing::info!("🔐 PQC handshake established with {} (Kyber768)", peer_id);
-            } else {
-                tracing::info!("🔐 RSA handshake established with {}", peer_id);
-            }
-
             Ok((peer_id, protocol_version, peer_public_key))
         }
     }
