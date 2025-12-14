@@ -197,12 +197,13 @@ async fn test_3_nodes_connectivity() {
         connected3
     );
 
-    // Cleanup - nodes will stop when handles are aborted
-
-    sleep(Duration::from_millis(100)).await;
-    handle1.abort();
-    handle2.abort();
-    handle3.abort();
+    // Cleanup - request shutdown so Node can abort its internal tasks cleanly
+    node1.request_shutdown();
+    node2.request_shutdown();
+    node3.request_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle1).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle2).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle3).await;
 }
 
 #[tokio::test]
@@ -276,12 +277,13 @@ async fn test_3_nodes_message_sending() {
         println!("⚠️ Node1 has no connected peers, skipping message test");
     }
 
-    // Cleanup - nodes will stop when handles are aborted
-
-    sleep(Duration::from_millis(100)).await;
-    handle1.abort();
-    handle2.abort();
-    handle3.abort();
+    // Cleanup - request shutdown so Node can abort its internal tasks cleanly
+    node1.request_shutdown();
+    node2.request_shutdown();
+    node3.request_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle1).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle2).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle3).await;
 }
 
 #[tokio::test]
@@ -354,7 +356,7 @@ async fn test_ai_routing_peer_selection() {
 
     // Get best forward peers (top 2)
     let peer_infos = vec![peer1.clone(), peer2.clone(), peer3.clone()];
-    let best_peers = router.get_best_forward_peers(&message, &peer_infos, 2);
+    let best_peers = router.get_best_forward_peers(&message, &peer_infos, 2).await;
 
     // peer1 should be selected (best latency + reliability)
     assert!(
@@ -371,9 +373,9 @@ async fn test_ai_routing_peer_selection() {
     println!("✅ AI-Routing selected peers: {:?}", best_peers);
 
     // Verify scores
-    let score1 = Router::calculate_peer_score(&peer1.metrics);
-    let score2 = Router::calculate_peer_score(&peer2.metrics);
-    let score3 = Router::calculate_peer_score(&peer3.metrics);
+    let score1 = Router::calculate_peer_score(&peer1.metrics, None);
+    let score2 = Router::calculate_peer_score(&peer2.metrics, None);
+    let score3 = Router::calculate_peer_score(&peer3.metrics, None);
 
     println!(
         "Peer scores: peer1={:.2}, peer2={:.2}, peer3={:.2}",
@@ -435,10 +437,11 @@ async fn test_ai_routing_latency_measurement() {
         }
     }
 
-    // Cleanup - abort handles to stop nodes
-    sleep(Duration::from_millis(100)).await;
-    handle1.abort();
-    handle2.abort();
+    // Cleanup - request shutdown so Node can abort its internal tasks cleanly
+    node1.request_shutdown();
+    node2.request_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle1).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle2).await;
 }
 
 #[tokio::test]
@@ -515,9 +518,84 @@ async fn test_ai_routing_message_forwarding() {
         );
     }
 
-    // Cleanup
-    sleep(Duration::from_millis(100)).await;
-    handle1.abort();
-    handle2.abort();
-    handle3.abort();
+    // Cleanup - request shutdown so Node can abort its internal tasks cleanly
+    node1.request_shutdown();
+    node2.request_shutdown();
+    node3.request_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle1).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle2).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle3).await;
+}
+
+#[tokio::test]
+async fn test_cli_ping_peer_roundtrip() {
+    use meshlink_core::{Config, Node};
+    use std::sync::Arc;
+    use tokio::time::sleep;
+    use std::time::{Duration, Instant};
+
+    let config1 = Config {
+        listen_addr: "127.0.0.1:19101".parse().unwrap(),
+        known_peers: vec!["127.0.0.1:19102".to_string()],
+        ..Default::default()
+    };
+    let config2 = Config {
+        listen_addr: "127.0.0.1:19102".parse().unwrap(),
+        known_peers: vec![],
+        ..Default::default()
+    };
+
+    let node1 = Arc::new(Node::new(config1).unwrap());
+    let node2 = Arc::new(Node::new(config2).unwrap());
+
+    let n1 = node1.clone();
+    let handle1 = tokio::spawn(async move {
+        let _ = n1.start().await;
+    });
+
+    let n2 = node2.clone();
+    let handle2 = tokio::spawn(async move {
+        let _ = n2.start().await;
+    });
+
+    // Try to ping any active peer channel within a deadline (connections can churn during parallel tests).
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut last_err: Option<String> = None;
+    let mut ok = false;
+    while Instant::now() < deadline {
+        let active = node1.get_active_peer_ids().await;
+        if active.is_empty() {
+            sleep(Duration::from_millis(250)).await;
+            continue;
+        }
+
+        for peer_id in active {
+            match node1.ping_peer(&peer_id, Duration::from_secs(5)).await {
+                Ok(_rtt) => {
+                    ok = true;
+                    last_err = None;
+                    break;
+                }
+                Err(e) => {
+                    last_err = Some(format!("{}", e));
+                }
+            }
+        }
+
+        if ok {
+            break;
+        }
+        sleep(Duration::from_millis(200)).await;
+    }
+
+    assert!(
+        ok,
+        "ping_peer should succeed for an active peer channel, last error: {:?}",
+        last_err
+    );
+
+    node1.request_shutdown();
+    node2.request_shutdown();
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle1).await;
+    let _ = tokio::time::timeout(Duration::from_secs(2), handle2).await;
 }
