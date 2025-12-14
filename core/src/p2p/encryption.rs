@@ -33,6 +33,33 @@ impl EncryptionManager {
         })
     }
 
+    pub fn from_private_key(private_key: RsaPrivateKey) -> Result<Self> {
+        let public_key = RsaPublicKey::from(&private_key);
+        Ok(Self {
+            private_key: Arc::new(RwLock::new(private_key)),
+            public_key: Arc::new(public_key),
+        })
+    }
+
+    pub fn encode_private_key_pkcs8(&self) -> Result<Vec<u8>> {
+        use rsa::pkcs8::EncodePrivateKey;
+        // Best-effort: clone private key for export
+        let private_key = self
+            .private_key
+            .try_read()
+            .map_err(|_| MeshError::Peer("Failed to read private key for export".to_string()))?;
+        let der = private_key
+            .to_pkcs8_der()
+            .map_err(|e| MeshError::Peer(format!("Failed to serialize private key: {}", e)))?;
+        Ok(der.as_bytes().to_vec())
+    }
+
+    pub fn decode_private_key_pkcs8(pkcs8_der: &[u8]) -> Result<RsaPrivateKey> {
+        use rsa::pkcs8::DecodePrivateKey;
+        RsaPrivateKey::from_pkcs8_der(pkcs8_der)
+            .map_err(|e| MeshError::Peer(format!("Failed to parse private key: {}", e)))
+    }
+
     /// Get public key as base64-encoded string
     pub fn get_public_key_string(&self) -> Result<String> {
         use rsa::pkcs8::EncodePublicKey;

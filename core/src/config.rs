@@ -2,6 +2,7 @@
 use crate::error::{MeshError, Result};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// Node configuration
@@ -30,6 +31,12 @@ pub struct Config {
 
     /// Retry connection interval
     pub retry_interval: Duration,
+
+    /// Enable AI-routing debug output
+    pub ai_debug: bool,
+
+    /// Optional data directory for persistent identity/keys (defaults to `.ely/node-<port>`)
+    pub data_dir: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -43,6 +50,8 @@ impl Default for Config {
             peer_stale_timeout: Duration::from_secs(120),
             max_connection_attempts: 5,
             retry_interval: Duration::from_secs(5),
+            ai_debug: false,
+            data_dir: None,
         }
     }
 }
@@ -52,7 +61,7 @@ impl Config {
     pub fn from_args(args: &[String]) -> Result<Self> {
         if args.len() < 2 {
             return Err(MeshError::Config(format!(
-                "Usage: {} <port> [peer1] [peer2] ...",
+                "Usage: {} <port> [peer1] [peer2] ... [--ai-debug] [--data-dir <path>]",
                 args.first().unwrap_or(&"meshlink".to_string())
             )));
         }
@@ -65,11 +74,37 @@ impl Config {
             .parse()
             .map_err(|_| MeshError::Config("Invalid listen address".to_string()))?;
 
-        let known_peers = args[2..].to_vec();
+        // Parse known peers and flags
+        let mut known_peers = Vec::new();
+        let mut ai_debug = false;
+        let mut data_dir: Option<PathBuf> = None;
+        
+        let mut i = 2;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--ai-debug" => {
+                    ai_debug = true;
+                    i += 1;
+                }
+                "--data-dir" => {
+                    let path = args.get(i + 1).ok_or_else(|| {
+                        MeshError::Config("--data-dir requires a path argument".to_string())
+                    })?;
+                    data_dir = Some(PathBuf::from(path));
+                    i += 2;
+                }
+                other => {
+                    known_peers.push(other.to_string());
+                    i += 1;
+                }
+            }
+        }
 
         Ok(Self {
             listen_addr,
             known_peers,
+            ai_debug,
+            data_dir,
             ..Default::default()
         })
     }
