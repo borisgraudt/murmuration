@@ -8,21 +8,9 @@ import socket
 import sys
 import os
 from typing import Optional, Dict, Any
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.text import Text
-from rich import box
-from rich.prompt import Prompt
-from rich.live import Live
-from rich.layout import Layout
-from rich.align import Align
 
 # Default API port (9000 + node_port)
 DEFAULT_API_PORTS = [17080, 17081, 17082, 17083, 17084, 17085]
-
-# Initialize rich console
-console = Console()
 
 class MeshLinkClient:
     """Client for connecting to MeshNet node API"""
@@ -30,7 +18,7 @@ class MeshLinkClient:
     def __init__(self, api_port: Optional[int] = None):
         self.api_port = api_port or self._discover_api_port()
         if not self.api_port:
-            console.print("[bold red]✗[/bold red] Could not find running node. Make sure a node is running.", style="red")
+            print("Error: Could not find running node. Make sure a node is running.")
             sys.exit(1)
     
     def _discover_api_port(self) -> Optional[int]:
@@ -105,12 +93,12 @@ class MeshLinkClient:
         
         response = self._send_request(request)
         if not response.get("success", False) or "error" in response:
-            console.print(f"[bold red]✗ Error:[/bold red] {response.get('error', 'Unknown error')}", style="red")
+            print(f"Error: {response.get('error', 'Unknown error')}")
             return False
         
         data = response.get("data", {})
         message_id = data.get("message_id", "unknown")
-        console.print(f"[bold green]✓[/bold green] Message sent: [cyan]{message_id}[/cyan]")
+        print(f"Message sent: {message_id}")
         return True
     
     def list_peers(self):
@@ -119,33 +107,22 @@ class MeshLinkClient:
         response = self._send_request(request)
         
         if not response.get("success", False) or "error" in response:
-            console.print(f"[bold red]✗ Error:[/bold red] {response.get('error', 'Unknown error')}", style="red")
+            print(f"Error: {response.get('error', 'Unknown error')}")
             return
         
         data = response.get("data", {})
         peers = data.get("peers", [])
         if not peers:
-            console.print("[yellow]No peers connected[/yellow]")
+            print("No peers connected")
             return
         
-        table = Table(title="[bold cyan]Connected Peers[/bold cyan]", box=box.ROUNDED, show_header=True, header_style="bold magenta")
-        table.add_column("Peer ID", style="cyan", width=40)
-        table.add_column("Address", style="green")
-        table.add_column("State", justify="center")
-        
+        print(f"\nPeers ({len(peers)}):")
+        print("-" * 60)
         for peer in peers:
             state = peer.get("state", "unknown")
             addr = peer.get("address", "unknown")
             node_id = peer.get("id", "unknown")
-            
-            # Color code state
-            state_style = "green" if "Connected" in state else "yellow" if "Connecting" in state else "red"
-            state_text = f"[{state_style}]{state}[/{state_style}]"
-            
-            table.add_row(node_id, addr, state_text)
-        
-        console.print(table)
-        console.print(f"\n[dim]Total: {len(peers)} peer(s)[/dim]")
+            print(f"{node_id[:8]}... @ {addr} [{state}]")
     
     def show_status(self):
         """Show node status"""
@@ -153,7 +130,7 @@ class MeshLinkClient:
         response = self._send_request(request)
         
         if not response.get("success", False) or "error" in response:
-            console.print(f"[bold red]✗ Error:[/bold red] {response.get('error', 'Unknown error')}", style="red")
+            print(f"Error: {response.get('error', 'Unknown error')}")
             return
         
         data = response.get("data", {})
@@ -161,32 +138,21 @@ class MeshLinkClient:
         connected = data.get("connected_peers", 0)
         total = data.get("total_peers", 0)
         
-        # Create status panel
-        status_text = f"""
-[bold cyan]Node ID:[/bold cyan] {node_id}
-[bold cyan]Connected:[/bold cyan] [green]{connected}[/green]/[dim]{total}[/dim] peers
-[bold cyan]API Port:[/bold cyan] [yellow]{self.api_port}[/yellow]
-        """.strip()
-        
-        panel = Panel(
-            Align.left(Text.from_markup(status_text)),
-            title="[bold green]⚡ MeshLink Node Status[/bold green]",
-            border_style="cyan",
-            box=box.ROUNDED
-        )
-        console.print(panel)
+        print(f"\nNode Status:")
+        print("-" * 60)
+        print(f"Node ID: {node_id}")
+        print(f"Connected: {connected}/{total} peers")
+        print(f"API Port: {self.api_port}")
 
 def run_repl(client: MeshLinkClient):
     """Run interactive REPL mode"""
-    console.print(Panel(
-        "[bold cyan]⚡ MeshLink CLI - Interactive Mode[/bold cyan]\n[dim]Type 'help' for commands, 'exit' to quit[/dim]",
-        border_style="cyan",
-        box=box.ROUNDED
-    ))
+    print("MeshLink CLI - Interactive Mode")
+    print("Type 'help' for commands, 'exit' to quit")
+    print("-" * 60)
     
     while True:
         try:
-            line = Prompt.ask("[bold cyan]meshlink[/bold cyan]").strip()
+            line = input("meshlink> ").strip()
             if not line:
                 continue
             
@@ -195,37 +161,31 @@ def run_repl(client: MeshLinkClient):
             args = parts[1] if len(parts) > 1 else ""
             
             if command == "exit" or command == "quit":
-                console.print("[bold green]Goodbye![/bold green]")
+                print("Goodbye!")
                 break
             elif command == "help":
-                help_table = Table(box=box.ROUNDED, show_header=False, padding=(0, 2))
-                help_table.add_column("Command", style="cyan")
-                help_table.add_column("Description", style="white")
-                
-                help_table.add_row("send <peer_id> <message>", "Send message to specific peer")
-                help_table.add_row("broadcast <message>", "Broadcast message to all peers")
-                help_table.add_row("peers", "List all peers")
-                help_table.add_row("status", "Show node status")
-                help_table.add_row("help", "Show this help")
-                help_table.add_row("exit", "Exit interactive mode")
-                
-                console.print("\n[bold]Available Commands:[/bold]")
-                console.print(help_table)
-                console.print()
+                print("\nCommands:")
+                print("  send <peer_id> <message>  - Send message to specific peer")
+                print("  broadcast <message>       - Broadcast message to all peers")
+                print("  peers                     - List all peers")
+                print("  status                    - Show node status")
+                print("  help                      - Show this help")
+                print("  exit                      - Exit interactive mode")
+                print()
             elif command == "send":
                 if not args:
-                    console.print("[yellow]Usage: send <peer_id> <message>[/yellow]")
+                    print("Usage: send <peer_id> <message>")
                     continue
                 send_parts = args.split(None, 1)
                 if len(send_parts) < 2:
-                    console.print("[yellow]Usage: send <peer_id> <message>[/yellow]")
+                    print("Usage: send <peer_id> <message>")
                     continue
                 peer_id = send_parts[0]
                 message = send_parts[1]
                 client.send_message(peer_id, message)
             elif command == "broadcast":
                 if not args:
-                    console.print("[yellow]Usage: broadcast <message>[/yellow]")
+                    print("Usage: broadcast <message>")
                     continue
                 client.send_message(None, args)
             elif command == "peers":
@@ -233,15 +193,15 @@ def run_repl(client: MeshLinkClient):
             elif command == "status":
                 client.show_status()
             else:
-                console.print(f"[yellow]Unknown command: {command}. Type 'help' for available commands.[/yellow]")
+                print(f"Unknown command: {command}. Type 'help' for available commands.")
         except KeyboardInterrupt:
-            console.print("\n[bold green]Goodbye![/bold green]")
+            print("\nGoodbye!")
             break
         except EOFError:
-            console.print("\n[bold green]Goodbye![/bold green]")
+            print("\nGoodbye!")
             break
         except Exception as e:
-            console.print(f"[bold red]Error:[/bold red] {e}", style="red")
+            print(f"Error: {e}")
 
 def main():
     """Main CLI entry point"""
@@ -255,13 +215,13 @@ def main():
         return
     
     if len(sys.argv) < 2:
-        console.print("[bold red]Usage:[/bold red] python cli.py <command> [args...]")
-        console.print("       python cli.py [-i|--interactive|repl]  - Interactive mode")
-        console.print("\n[bold]Commands:[/bold]")
-        console.print("  [cyan]send[/cyan] <peer_id> <message>  - Send message to specific peer")
-        console.print("  [cyan]broadcast[/cyan] <message>       - Broadcast message to all peers")
-        console.print("  [cyan]peers[/cyan]                     - List all peers")
-        console.print("  [cyan]status[/cyan]                    - Show node status")
+        print("Usage: python cli.py <command> [args...]")
+        print("       python cli.py [-i|--interactive|repl]  - Interactive mode")
+        print("\nCommands:")
+        print("  send <peer_id> <message>  - Send message to specific peer")
+        print("  broadcast <message>       - Broadcast message to all peers")
+        print("  peers                     - List all peers")
+        print("  status                    - Show node status")
         sys.exit(1)
     
     command = sys.argv[1]
@@ -269,7 +229,7 @@ def main():
     
     if command == "send":
         if len(sys.argv) < 4:
-            console.print("[yellow]Usage: python cli.py send <peer_id> <message>[/yellow]")
+            print("Usage: python cli.py send <peer_id> <message>")
             sys.exit(1)
         peer_id = sys.argv[2]
         message = " ".join(sys.argv[3:])
@@ -277,7 +237,7 @@ def main():
     
     elif command == "broadcast":
         if len(sys.argv) < 3:
-            console.print("[yellow]Usage: python cli.py broadcast <message>[/yellow]")
+            print("Usage: python cli.py broadcast <message>")
             sys.exit(1)
         message = " ".join(sys.argv[2:])
         client.send_message(None, message)
@@ -289,7 +249,7 @@ def main():
         client.show_status()
     
     else:
-        console.print(f"[bold red]Unknown command:[/bold red] {command}")
+        print(f"Unknown command: {command}")
         sys.exit(1)
 
 if __name__ == "__main__":

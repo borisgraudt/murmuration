@@ -104,17 +104,6 @@ pub struct Router {
     our_node_id: String,
     seen_messages: Arc<RwLock<HashMap<String, Instant>>>, // message_id -> timestamp
     message_cache: Arc<RwLock<HashMap<String, MeshMessage>>>, // Cache for deduplication
-    route_history: Arc<RwLock<HashMap<String, RouteStats>>>, // peer_id -> route statistics
-}
-
-/// Statistics for a route (peer)
-#[derive(Debug, Clone)]
-pub struct RouteStats {
-    success_count: u32,
-    failure_count: u32,
-    total_latency: Duration,
-    sample_count: u32,
-    last_updated: Instant,
 }
 
 impl Router {
@@ -124,7 +113,6 @@ impl Router {
             our_node_id,
             seen_messages: Arc::new(RwLock::new(HashMap::new())),
             message_cache: Arc::new(RwLock::new(HashMap::new())),
-            route_history: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -181,11 +169,7 @@ impl Router {
     }
 
     /// Calculate routing score for a peer based on metrics (higher is better)
-    /// Uses adaptive learning: score = α*old_score + β*new_score
-    pub fn calculate_peer_score(
-        peer_metrics: &crate::p2p::peer::PeerMetrics,
-        route_stats: Option<&RouteStats>,
-    ) -> f64 {
+    pub fn calculate_peer_score(peer_metrics: &crate::p2p::peer::PeerMetrics) -> f64 {
         // Latency score: lower latency = higher score (normalize to 0-1, assuming max 1s latency)
         let latency_score = peer_metrics
             .latency
@@ -201,42 +185,8 @@ impl Router {
         // Reliability score: based on ping success rate
         let reliability = peer_metrics.reliability_score() as f64;
 
-        // Route success rate from history
-        let route_success_rate = if let Some(stats) = route_stats {
-            let total = stats.success_count + stats.failure_count;
-            if total > 0 {
-                stats.success_count as f64 / total as f64
-            } else {
-                0.5
-            }
-        } else {
-            0.5 // Default if no history
-        };
-
-        // Base score: 30% latency, 15% uptime, 30% reliability, 25% route success
-        let base_score = 0.3 * latency_score
-            + 0.15 * uptime_score
-            + 0.3 * reliability
-            + 0.25 * route_success_rate;
-
-        // Adaptive learning: if we have previous score, blend it
-        if let Some(stats) = route_stats {
-            if stats.sample_count > 0 {
-                let avg_latency = if stats.sample_count > 0 {
-                    stats.total_latency.as_secs_f64() / stats.sample_count as f64
-                } else {
-                    0.0
-                };
-                let historical_score = (1.0 - (avg_latency.min(1.0))).max(0.0);
-
-                // Exponential moving average: α=0.7 (old), β=0.3 (new)
-                const ALPHA: f64 = 0.7;
-                const BETA: f64 = 0.3;
-                return ALPHA * historical_score + BETA * base_score;
-            }
-        }
-
-        base_score
+        // Weighted combination: 40% latency, 20% uptime, 40% reliability
+        0.4 * latency_score + 0.2 * uptime_score + 0.4 * reliability
     }
 
     /// Get list of peers to forward to (flooding: all except sender)
@@ -255,15 +205,12 @@ impl Router {
 
     /// Get best peers to forward to based on metrics (AI-routing)
     /// Returns peers sorted by score (best first), limited to top N
-    pub async fn get_best_forward_peers(
+    pub fn get_best_forward_peers(
         &self,
         message: &MeshMessage,
         peer_infos: &[crate::p2p::peer::PeerInfo],
         max_peers: usize,
     ) -> Vec<String> {
-        // Get route history for adaptive learning
-        let route_history = self.route_history.read().await;
-
         // Filter and score peers
         let mut scored_peers: Vec<(String, f64)> = peer_infos
             .iter()
@@ -276,8 +223,7 @@ impl Router {
                 peer.is_connected()
             })
             .map(|peer| {
-                let route_stats = route_history.get(&peer.node_id);
-                let score = Self::calculate_peer_score(&peer.metrics, route_stats);
+                let score = Self::calculate_peer_score(&peer.metrics);
                 (peer.node_id.clone(), score)
             })
             .collect();
@@ -291,42 +237,6 @@ impl Router {
             .take(max_peers)
             .map(|(peer_id, _score)| peer_id)
             .collect()
-    }
-
-    /// Record successful route (for adaptive learning)
-    pub async fn record_route_success(&self, peer_id: &str, latency: Duration) {
-        let mut history = self.route_history.write().await;
-        let stats = history
-            .entry(peer_id.to_string())
-            .or_insert_with(|| RouteStats {
-                success_count: 0,
-                failure_count: 0,
-                total_latency: Duration::ZERO,
-                sample_count: 0,
-                last_updated: Instant::now(),
-            });
-
-        stats.success_count += 1;
-        stats.total_latency += latency;
-        stats.sample_count += 1;
-        stats.last_updated = Instant::now();
-    }
-
-    /// Record failed route (for adaptive learning)
-    pub async fn record_route_failure(&self, peer_id: &str) {
-        let mut history = self.route_history.write().await;
-        let stats = history
-            .entry(peer_id.to_string())
-            .or_insert_with(|| RouteStats {
-                success_count: 0,
-                failure_count: 0,
-                total_latency: Duration::ZERO,
-                sample_count: 0,
-                last_updated: Instant::now(),
-            });
-
-        stats.failure_count += 1;
-        stats.last_updated = Instant::now();
     }
 
     /// Cleanup old cache entries
@@ -345,7 +255,6 @@ impl Clone for Router {
             our_node_id: self.our_node_id.clone(),
             seen_messages: self.seen_messages.clone(),
             message_cache: self.message_cache.clone(),
-            route_history: self.route_history.clone(),
         }
     }
 }

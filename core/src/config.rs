@@ -30,9 +30,6 @@ pub struct Config {
 
     /// Retry connection interval
     pub retry_interval: Duration,
-
-    /// Enable AI-routing debug output
-    pub ai_debug: bool,
 }
 
 impl Default for Config {
@@ -46,7 +43,6 @@ impl Default for Config {
             peer_stale_timeout: Duration::from_secs(120),
             max_connection_attempts: 5,
             retry_interval: Duration::from_secs(5),
-            ai_debug: false,
         }
     }
 }
@@ -56,7 +52,7 @@ impl Config {
     pub fn from_args(args: &[String]) -> Result<Self> {
         if args.len() < 2 {
             return Err(MeshError::Config(format!(
-                "Usage: {} <port> [peer1] [peer2] ... [--ai-debug]",
+                "Usage: {} <port> [peer1] [peer2] ...",
                 args.first().unwrap_or(&"meshlink".to_string())
             )));
         }
@@ -69,22 +65,11 @@ impl Config {
             .parse()
             .map_err(|_| MeshError::Config("Invalid listen address".to_string()))?;
 
-        // Parse known peers and flags
-        let mut known_peers = Vec::new();
-        let mut ai_debug = false;
-        
-        for arg in args.iter().skip(2) {
-            if arg == "--ai-debug" {
-                ai_debug = true;
-            } else {
-                known_peers.push(arg.clone());
-            }
-        }
+        let known_peers = args[2..].to_vec();
 
         Ok(Self {
             listen_addr,
             known_peers,
-            ai_debug,
             ..Default::default()
         })
     }
