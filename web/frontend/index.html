@@ -5,42 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Elysium Web - MeshNet Dashboard</title>
     <link rel="stylesheet" href="assets/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🌐 Elysium Web</h1>
-            <p>Decentralized Mesh Network Dashboard</p>
+            <div class="header-content">
+                <h1>
+                    <span class="icon">⚡</span>
+                    <span>Elysium Web</span>
+                </h1>
+                <p class="subtitle">Decentralized Mesh Network Dashboard</p>
+            </div>
+            <div class="header-status" id="header-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Connecting...</span>
+            </div>
         </header>
         
         <div class="dashboard">
-            <section class="status-panel">
-                <h2>Node Status</h2>
-                <div id="node-status">
-                    <p>Loading...</p>
+            <section class="status-panel card">
+                <div class="card-header">
+                    <h2>Node Status</h2>
+                </div>
+                <div class="card-content" id="node-status">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading...</p>
+                    </div>
                 </div>
             </section>
             
-            <section class="peers-panel">
-                <h2>Connected Peers</h2>
-                <div id="peers-list">
-                    <p>Loading...</p>
+            <section class="peers-panel card">
+                <div class="card-header">
+                    <h2>Connected Peers</h2>
+                    <span class="badge" id="peers-count">0</span>
+                </div>
+                <div class="card-content" id="peers-list">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading...</p>
+                    </div>
                 </div>
             </section>
             
-            <section class="chat-panel">
-                <h2>Mesh Chat</h2>
-                <div id="chat-messages"></div>
-                <div class="chat-input">
-                    <input type="text" id="message-input" placeholder="Type a message...">
-                    <button id="send-button">Send</button>
+            <section class="chat-panel card">
+                <div class="card-header">
+                    <h2>Mesh Chat</h2>
+                </div>
+                <div class="card-content">
+                    <div id="chat-messages" class="chat-messages"></div>
+                    <div class="chat-input">
+                        <input 
+                            type="text" 
+                            id="message-input" 
+                            placeholder="Type a message to broadcast..."
+                            autocomplete="off"
+                        >
+                        <button id="send-button" class="btn-primary">
+                            <span>Send</span>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M1.5 1.5L14.5 8L1.5 14.5V9.5L10.5 8L1.5 6.5V1.5Z" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </section>
             
-            <section class="sites-panel">
-                <h2>Available Sites</h2>
-                <div id="sites-list">
-                    <p>Loading...</p>
+            <section class="sites-panel card">
+                <div class="card-header">
+                    <h2>Available Sites</h2>
+                </div>
+                <div class="card-content" id="sites-list">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading...</p>
+                    </div>
                 </div>
             </section>
         </div>
@@ -49,4 +91,3 @@
     <script src="assets/app.js"></script>
 </body>
 </html>
-

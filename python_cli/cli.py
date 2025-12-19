@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-MeshNet CLI - Command-line interface for testing the P2P network
+MeshNet CLI - Beautiful command-line interface in Claude Code style
 Commands: connect, send, peers, status, deploy_site
 """
 import json
@@ -14,15 +14,34 @@ from rich.panel import Panel
 from rich.text import Text
 from rich import box
 from rich.prompt import Prompt
-from rich.live import Live
-from rich.layout import Layout
+from rich.syntax import Syntax
+from rich.markdown import Markdown
 from rich.align import Align
+
+# Claude Code color scheme
+THEME = {
+    "bg": "#0d1117",
+    "surface": "#161b22",
+    "surface_light": "#21262d",
+    "text": "#c9d1d9",
+    "text_dim": "#8b949e",
+    "accent": "#58a6ff",
+    "accent_hover": "#79c0ff",
+    "success": "#3fb950",
+    "warning": "#d29922",
+    "error": "#f85149",
+    "border": "#30363d",
+}
 
 # Default API port (9000 + node_port)
 DEFAULT_API_PORTS = [17080, 17081, 17082, 17083, 17084, 17085]
 
-# Initialize rich console
-console = Console()
+# Initialize rich console with Claude Code theme
+console = Console(
+    style=THEME["text"],
+    force_terminal=True,
+    width=120,
+)
 
 class MeshLinkClient:
     """Client for connecting to MeshNet node API"""
@@ -30,7 +49,16 @@ class MeshLinkClient:
     def __init__(self, api_port: Optional[int] = None):
         self.api_port = api_port or self._discover_api_port()
         if not self.api_port:
-            console.print("[bold red]✗[/bold red] Could not find running node. Make sure a node is running.", style="red")
+            console.print(
+                Panel(
+                    "[bold red]✗[/bold red] Could not find running node.\n\n"
+                    "[dim]Make sure a node is running with:[/dim]\n"
+                    "[cyan]cargo run --bin core --release -- <port>[/cyan]",
+                    title="[bold]Connection Error[/bold]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                )
+            )
             sys.exit(1)
     
     def _discover_api_port(self) -> Optional[int]:
@@ -105,12 +133,26 @@ class MeshLinkClient:
         
         response = self._send_request(request)
         if not response.get("success", False) or "error" in response:
-            console.print(f"[bold red]✗ Error:[/bold red] {response.get('error', 'Unknown error')}", style="red")
+            console.print(
+                Panel(
+                    f"[bold red]✗ Error[/bold red]\n\n[dim]{response.get('error', 'Unknown error')}[/dim]",
+                    title="[bold]Send Failed[/bold]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                )
+            )
             return False
         
         data = response.get("data", {})
         message_id = data.get("message_id", "unknown")
-        console.print(f"[bold green]✓[/bold green] Message sent: [cyan]{message_id}[/cyan]")
+        console.print(
+            Panel(
+                f"[bold green]✓ Message sent[/bold green]\n\n[dim]Message ID:[/dim] [cyan]{message_id}[/cyan]",
+                title="[bold]Success[/bold]",
+                border_style="green",
+                box=box.ROUNDED,
+            )
+        )
         return True
     
     def list_peers(self):
@@ -119,19 +161,41 @@ class MeshLinkClient:
         response = self._send_request(request)
         
         if not response.get("success", False) or "error" in response:
-            console.print(f"[bold red]✗ Error:[/bold red] {response.get('error', 'Unknown error')}", style="red")
+            console.print(
+                Panel(
+                    f"[bold red]✗ Error[/bold red]\n\n[dim]{response.get('error', 'Unknown error')}[/dim]",
+                    title="[bold]Request Failed[/bold]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                )
+            )
             return
         
         data = response.get("data", {})
         peers = data.get("peers", [])
         if not peers:
-            console.print("[yellow]No peers connected[/yellow]")
+            console.print(
+                Panel(
+                    "[yellow]No peers connected[/yellow]\n\n[dim]Wait for peers to connect or start additional nodes.[/dim]",
+                    title="[bold]Peers[/bold]",
+                    border_style="yellow",
+                    box=box.ROUNDED,
+                )
+            )
             return
         
-        table = Table(title="[bold cyan]Connected Peers[/bold cyan]", box=box.ROUNDED, show_header=True, header_style="bold magenta")
-        table.add_column("Peer ID", style="cyan", width=40)
-        table.add_column("Address", style="green")
-        table.add_column("State", justify="center")
+        # Create beautiful table
+        table = Table(
+            title="[bold cyan]Connected Peers[/bold cyan]",
+            box=box.ROUNDED,
+            show_header=True,
+            header_style="bold cyan",
+            border_style="blue",
+            title_style="bold cyan",
+        )
+        table.add_column("Peer ID", style="cyan", width=36, no_wrap=True)
+        table.add_column("Address", style="green", width=20)
+        table.add_column("State", justify="center", width=12)
         
         for peer in peers:
             state = peer.get("state", "unknown")
@@ -139,13 +203,21 @@ class MeshLinkClient:
             node_id = peer.get("id", "unknown")
             
             # Color code state
-            state_style = "green" if "Connected" in state else "yellow" if "Connecting" in state else "red"
-            state_text = f"[{state_style}]{state}[/{state_style}]"
+            if "Connected" in state:
+                state_text = f"[bold green]●[/bold green] [green]Connected[/green]"
+            elif "Handshaking" in state or "Connecting" in state:
+                state_text = f"[bold yellow]●[/bold yellow] [yellow]Connecting[/yellow]"
+            else:
+                state_text = f"[bold red]●[/bold red] [red]Disconnected[/red]"
             
-            table.add_row(node_id, addr, state_text)
+            table.add_row(
+                f"[cyan]{node_id[:32]}...[/cyan]" if len(node_id) > 32 else f"[cyan]{node_id}[/cyan]",
+                f"[green]{addr}[/green]",
+                state_text
+            )
         
         console.print(table)
-        console.print(f"\n[dim]Total: {len(peers)} peer(s)[/dim]")
+        console.print(f"\n[dim]Total: [cyan]{len(peers)}[/cyan] peer(s)[/dim]")
     
     def show_status(self):
         """Show node status"""
@@ -153,7 +225,14 @@ class MeshLinkClient:
         response = self._send_request(request)
         
         if not response.get("success", False) or "error" in response:
-            console.print(f"[bold red]✗ Error:[/bold red] {response.get('error', 'Unknown error')}", style="red")
+            console.print(
+                Panel(
+                    f"[bold red]✗ Error[/bold red]\n\n[dim]{response.get('error', 'Unknown error')}[/dim]",
+                    title="[bold]Request Failed[/bold]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                )
+            )
             return
         
         data = response.get("data", {})
@@ -161,32 +240,44 @@ class MeshLinkClient:
         connected = data.get("connected_peers", 0)
         total = data.get("total_peers", 0)
         
-        # Create status panel
-        status_text = f"""
-[bold cyan]Node ID:[/bold cyan] {node_id}
-[bold cyan]Connected:[/bold cyan] [green]{connected}[/green]/[dim]{total}[/dim] peers
+        # Create beautiful status panel
+        status_content = f"""
+[bold cyan]Node ID:[/bold cyan] [white]{node_id}[/white]
+
+[bold cyan]Connected:[/bold cyan] [bold green]{connected}[/bold green][dim]/[/dim][dim]{total}[/dim] [dim]peers[/dim]
+
 [bold cyan]API Port:[/bold cyan] [yellow]{self.api_port}[/yellow]
         """.strip()
         
-        panel = Panel(
-            Align.left(Text.from_markup(status_text)),
-            title="[bold green]⚡ MeshLink Node Status[/bold green]",
-            border_style="cyan",
-            box=box.ROUNDED
+        console.print(
+            Panel(
+                Align.left(Text.from_markup(status_content)),
+                title="[bold cyan]⚡ MeshLink Node Status[/bold cyan]",
+                border_style="cyan",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            )
         )
-        console.print(panel)
+
+def print_welcome():
+    """Print welcome message"""
+    welcome = """
+[bold cyan]╔═══════════════════════════════════════════════════════════╗[/bold cyan]
+[bold cyan]║[/bold cyan]  [bold white]⚡ MeshLink CLI[/bold white] - Decentralized P2P Network  [bold cyan]║[/bold cyan]
+[bold cyan]╚═══════════════════════════════════════════════════════════╝[/bold cyan]
+
+[dim]Type [cyan]help[/cyan] for commands, [cyan]exit[/cyan] to quit[/dim]
+    """.strip()
+    console.print(welcome)
+    console.print()
 
 def run_repl(client: MeshLinkClient):
     """Run interactive REPL mode"""
-    console.print(Panel(
-        "[bold cyan]⚡ MeshLink CLI - Interactive Mode[/bold cyan]\n[dim]Type 'help' for commands, 'exit' to quit[/dim]",
-        border_style="cyan",
-        box=box.ROUNDED
-    ))
+    print_welcome()
     
     while True:
         try:
-            line = Prompt.ask("[bold cyan]meshlink[/bold cyan]").strip()
+            line = Prompt.ask("[bold cyan]meshlink[/bold cyan] [dim]»[/dim]").strip()
             if not line:
                 continue
             
@@ -195,22 +286,36 @@ def run_repl(client: MeshLinkClient):
             args = parts[1] if len(parts) > 1 else ""
             
             if command == "exit" or command == "quit":
-                console.print("[bold green]Goodbye![/bold green]")
+                console.print("\n[bold green]Goodbye![/bold green] [dim]👋[/dim]\n")
                 break
             elif command == "help":
-                help_table = Table(box=box.ROUNDED, show_header=False, padding=(0, 2))
-                help_table.add_column("Command", style="cyan")
-                help_table.add_column("Description", style="white")
-                
-                help_table.add_row("send <peer_id> <message>", "Send message to specific peer")
-                help_table.add_row("broadcast <message>", "Broadcast message to all peers")
-                help_table.add_row("peers", "List all peers")
-                help_table.add_row("status", "Show node status")
-                help_table.add_row("help", "Show this help")
-                help_table.add_row("exit", "Exit interactive mode")
-                
-                console.print("\n[bold]Available Commands:[/bold]")
-                console.print(help_table)
+                help_content = """
+[bold cyan]Available Commands:[/bold cyan]
+
+  [cyan]send[/cyan] <peer_id> <message>
+      Send message to specific peer
+
+  [cyan]broadcast[/cyan] <message>
+      Broadcast message to all peers
+
+  [cyan]peers[/cyan]
+      List all connected peers
+
+  [cyan]status[/cyan]
+      Show node status
+
+  [cyan]help[/cyan]
+      Show this help message
+
+  [cyan]exit[/cyan]
+      Exit interactive mode
+                """.strip()
+                console.print(Panel(
+                    help_content,
+                    title="[bold]Help[/bold]",
+                    border_style="cyan",
+                    box=box.ROUNDED,
+                ))
                 console.print()
             elif command == "send":
                 if not args:
@@ -233,15 +338,29 @@ def run_repl(client: MeshLinkClient):
             elif command == "status":
                 client.show_status()
             else:
-                console.print(f"[yellow]Unknown command: {command}. Type 'help' for available commands.[/yellow]")
+                console.print(
+                    Panel(
+                        f"[yellow]Unknown command: [bold]{command}[/bold][/yellow]\n\n[dim]Type [cyan]help[/cyan] for available commands.[/dim]",
+                        title="[bold]Error[/bold]",
+                        border_style="yellow",
+                        box=box.ROUNDED,
+                    )
+                )
         except KeyboardInterrupt:
-            console.print("\n[bold green]Goodbye![/bold green]")
+            console.print("\n[bold green]Goodbye![/bold green] [dim]👋[/dim]\n")
             break
         except EOFError:
-            console.print("\n[bold green]Goodbye![/bold green]")
+            console.print("\n[bold green]Goodbye![/bold green] [dim]👋[/dim]\n")
             break
         except Exception as e:
-            console.print(f"[bold red]Error:[/bold red] {e}", style="red")
+            console.print(
+                Panel(
+                    f"[bold red]Error:[/bold red] [white]{e}[/white]",
+                    title="[bold]Exception[/bold]",
+                    border_style="red",
+                    box=box.ROUNDED,
+                )
+            )
 
 def main():
     """Main CLI entry point"""
@@ -255,13 +374,20 @@ def main():
         return
     
     if len(sys.argv) < 2:
-        console.print("[bold red]Usage:[/bold red] python cli.py <command> [args...]")
-        console.print("       python cli.py [-i|--interactive|repl]  - Interactive mode")
-        console.print("\n[bold]Commands:[/bold]")
-        console.print("  [cyan]send[/cyan] <peer_id> <message>  - Send message to specific peer")
-        console.print("  [cyan]broadcast[/cyan] <message>       - Broadcast message to all peers")
-        console.print("  [cyan]peers[/cyan]                     - List all peers")
-        console.print("  [cyan]status[/cyan]                    - Show node status")
+        console.print(
+            Panel(
+                "[bold]Usage:[/bold] [cyan]python cli.py[/cyan] <command> [args...]\n"
+                "       [cyan]python cli.py[/cyan] [yellow][-i|--interactive|repl][/yellow]  - Interactive mode\n\n"
+                "[bold]Commands:[/bold]\n"
+                "  [cyan]send[/cyan] <peer_id> <message>  - Send message to specific peer\n"
+                "  [cyan]broadcast[/cyan] <message>       - Broadcast message to all peers\n"
+                "  [cyan]peers[/cyan]                     - List all peers\n"
+                "  [cyan]status[/cyan]                    - Show node status",
+                title="[bold]MeshLink CLI[/bold]",
+                border_style="cyan",
+                box=box.ROUNDED,
+            )
+        )
         sys.exit(1)
     
     command = sys.argv[1]
@@ -289,9 +415,15 @@ def main():
         client.show_status()
     
     else:
-        console.print(f"[bold red]Unknown command:[/bold red] {command}")
+        console.print(
+            Panel(
+                f"[bold red]Unknown command:[/bold red] [white]{command}[/white]",
+                title="[bold]Error[/bold]",
+                border_style="red",
+                box=box.ROUNDED,
+            )
+        )
         sys.exit(1)
 
 if __name__ == "__main__":
     main()
-
