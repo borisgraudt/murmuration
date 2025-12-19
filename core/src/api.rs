@@ -62,6 +62,12 @@ impl ApiResponse {
 /// Start API server for CLI
 pub async fn start_api_server(node: Node, api_addr: SocketAddr) -> Result<()> {
     let listener = TcpListener::bind(&api_addr).await.map_err(MeshError::Io)?;
+    start_api_server_with_listener(node, listener).await
+}
+
+/// Start API server using an already-bound listener (lets caller choose port / use ephemeral)
+pub async fn start_api_server_with_listener(node: Node, listener: TcpListener) -> Result<()> {
+    let api_addr = listener.local_addr().map_err(MeshError::Io)?;
 
     info!("API server listening on {}", api_addr);
 
@@ -169,10 +175,12 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
         }
         ApiRequest::Status => {
             let (node_id, connected, total) = node.get_status().await;
+            let api_addr = node.get_api_addr().await;
             Ok(ApiResponse::success(serde_json::json!({
                 "node_id": node_id,
                 "connected_peers": connected,
-                "total_peers": total
+                "total_peers": total,
+                "api_port": api_addr.port()
             })))
         }
         ApiRequest::Ping {

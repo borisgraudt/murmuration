@@ -96,7 +96,9 @@ fn get_api_port() -> u16 {
             return p;
         }
     }
-    for port in [9082, 9083, 9080, 9081, 9000] {
+    // Default scheme: 9000 + P2P port (e.g. 8080 -> 17080)
+    // Try the common local range first.
+    for port in 17070..=17100 {
         match TcpStream::connect(format!("127.0.0.1:{}", port)) {
             Ok(_) => {
                 eprintln!(
@@ -117,7 +119,7 @@ fn get_api_port() -> u16 {
     eprintln!(
         "  {} {}",
         "-".dimmed(),
-        "MESHLINK_API_PORT=9082 cargo run --bin ely -- status".yellow()
+        "MESHLINK_API_PORT=17080 cargo run --bin ely -- status".yellow()
     );
     std::process::exit(1);
 }

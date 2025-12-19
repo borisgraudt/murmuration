@@ -68,6 +68,12 @@ pub struct Node {
 
     /// Manual ping waiters (peer_id -> (sent_at, responder))
     pending_manual_pings: Arc<RwLock<HashMap<String, (Instant, oneshot::Sender<Duration>)>>>,
+
+    /// Actual API address (may differ from default if port was taken and we had to fall back)
+    api_addr: Arc<RwLock<SocketAddr>>,
+
+    /// Discovery port used for UDP broadcast/listen
+    discovery_port: u16,
 }
 
 impl Node {
@@ -91,6 +97,16 @@ impl Node {
 
         info!("Created new node with ID: {}", id);
 
+        let default_api_port = 9000u16
+            .checked_add(config.listen_addr.port())
+            .unwrap_or(0);
+        let initial_api_addr: SocketAddr = config.api_addr.unwrap_or_else(|| {
+            format!("127.0.0.1:{}", default_api_port)
+                .parse()
+                .expect("valid api addr")
+        });
+        let discovery_port = config.discovery_port;
+
         Ok(Self {
             id,
             config,
@@ -105,7 +121,17 @@ impl Node {
             message_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_pings: Arc::new(RwLock::new(HashMap::new())),
             pending_manual_pings: Arc::new(RwLock::new(HashMap::new())),
+            api_addr: Arc::new(RwLock::new(initial_api_addr)),
+            discovery_port,
         })
+    }
+
+    pub async fn get_api_addr(&self) -> SocketAddr {
+        *self.api_addr.read().await
+    }
+
+    pub fn get_discovery_port(&self) -> u16 {
+        self.discovery_port
     }
 
     /// Start the node
@@ -113,6 +139,15 @@ impl Node {
         info!("Starting MeshLink node {}", self.id);
         info!("Listening on: {}", self.config.listen_addr);
         info!("Known peers: {:?}", self.config.known_peers);
+        info!(
+            "Discovery: {} (port {})",
+            if self.config.enable_discovery {
+                "enabled"
+            } else {
+                "disabled"
+            },
+            self.discovery_port
+        );
 
         // Initialize known peers
         for peer_addr in &self.config.known_peers {
@@ -156,13 +191,23 @@ impl Node {
             tokio::spawn(async move { node.run_discovery().await })
         };
 
-        // Start API server for CLI (on port 9000 + listen_port to avoid conflicts)
+        // Start API server for CLI (configurable; auto-falls-back if port is taken)
         let api_handle = {
             let node = self.clone();
-            let api_port = 9000 + self.config.listen_addr.port();
             tokio::spawn(async move {
-                let api_addr: SocketAddr = format!("127.0.0.1:{}", api_port).parse().unwrap();
-                if let Err(e) = crate::api::start_api_server(node, api_addr).await {
+                let preferred = node.get_api_addr().await;
+                let listener = match Node::bind_tcp_with_fallback(preferred, 20).await {
+                    Ok((listener, actual)) => {
+                        *node.api_addr.write().await = actual;
+                        listener
+                    }
+                    Err(e) => {
+                        error!("API server failed to bind: {}", e);
+                        return;
+                    }
+                };
+
+                if let Err(e) = crate::api::start_api_server_with_listener(node, listener).await {
                     error!("API server error: {}", e);
                 }
             })
@@ -1213,6 +1258,8 @@ impl Clone for Node {
             message_senders: self.message_senders.clone(),
             pending_pings: self.pending_pings.clone(),
             pending_manual_pings: self.pending_manual_pings.clone(),
+            api_addr: self.api_addr.clone(),
+            discovery_port: self.discovery_port,
         }
     }
 }
@@ -1220,10 +1267,14 @@ impl Clone for Node {
 impl Node {
     /// Run discovery task
     async fn run_discovery(&self) -> Result<()> {
+        if !self.config.enable_discovery {
+            return Ok(());
+        }
+
         let (tx, mut rx) = mpsc::unbounded_channel();
 
         let public_key = self.encryption_manager.get_public_key_string()?;
-        let discovery_port = self.config.listen_addr.port() + 1000; // Discovery on port + 1000
+        let discovery_port = self.discovery_port;
 
         let discovery_manager = DiscoveryManager::new(
             self.id.clone(),
@@ -1261,6 +1312,32 @@ impl Node {
 
         discovery_handle.abort();
         Ok(())
+    }
+
+    async fn bind_tcp_with_fallback(
+        preferred: SocketAddr,
+        tries: u16,
+    ) -> Result<(TcpListener, SocketAddr)> {
+        // 1) Preferred
+        if let Ok(l) = TcpListener::bind(preferred).await {
+            return Ok((l, preferred));
+        }
+
+        // 2) Increment a few ports
+        for i in 1..=tries {
+            if let Some(port) = preferred.port().checked_add(i) {
+                let candidate = SocketAddr::new(preferred.ip(), port);
+                if let Ok(l) = TcpListener::bind(candidate).await {
+                    return Ok((l, candidate));
+                }
+            }
+        }
+
+        // 3) Ephemeral port (still local)
+        let ephemeral = SocketAddr::new(preferred.ip(), 0);
+        let l = TcpListener::bind(ephemeral).await.map_err(MeshError::Io)?;
+        let actual = l.local_addr().map_err(MeshError::Io)?;
+        Ok((l, actual))
     }
 
     /// Handle incoming mesh message

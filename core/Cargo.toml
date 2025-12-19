@@ -45,6 +45,7 @@ aes-gcm = { version = "0.10", features = ["aes"] }
 sha2 = "0.10"
 base64 = "0.21"
 colored = "2.1"
+socket2 = "0.5"
 # Post-Quantum Cryptography - using pqcrypto-kyber 0.8.1 (more stable)
 pqcrypto-kyber = { version = "0.8", optional = true }
 pqcrypto-traits = { version = "0.3", optional = true }
