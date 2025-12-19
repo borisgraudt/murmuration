@@ -1,177 +1,77 @@
-# MeshNet: Decentralized Encrypted Communication Protocol
+## meshlink
 
-A fully peer-to-peer, censorship-resistant communication layer designed for autonomy, privacy, and resilience — built with Rust and Python AI integration.
+Decentralized, encrypted P2P mesh node in Rust — with a CLI and a minimalist web topology view.
 
-## 🧠 Vision
+### What you should see at the end
 
-Modern communication relies on centralized servers that can be censored, surveilled, or shut down. MeshNet redefines this paradigm — creating a fully decentralized, encrypted, and intelligent communication protocol where nodes cooperate, route messages autonomously, and survive even under complete internet isolation.
+- **Two+ nodes connect** (RSA handshake, AES-GCM session keys).
+- **`peers` shows real connections** (Connected / Handshaking / Disconnected).
+- **Sending a message** works (direct or broadcast).
+- **Web topology page** shows nodes + edges, and animates message flow when we wire events (today it polls peers/status).
 
-## ⚙️ Architecture
+### Repo layout
 
+```text
+core/         Rust node + binaries (core, cli, viz, ely)
+python_cli/   Python CLI (Claude Code-ish terminal UI)
+web/frontend/ Static web topology (GitHub Pages-ready)
+docs/         Protocol + architecture notes
+scripts/      Local run helpers
 ```
-meshnet_20_10/
-├── core/              # Rust P2P protocol with AI routing
-├── python_cli/        # CLI for testing
-├── web/               # Elysium Web (backend + frontend)
-├── sites/             # Decentralized mesh sites
-├── tests/             # Unit & integration tests
-├── scripts/           # Helper scripts
-└── docs/              # Documentation
-```
 
-## 🚀 Quick Start
+### Quick demo (local)
 
-### 1. Build Rust Core
+Open **two terminals**:
 
 ```bash
 cd core
-cargo build --release
+MESHLINK_API_PORT=17080 cargo run --bin core --release -- 8080
 ```
 
-### 2. Run a Node
-
 ```bash
-# Terminal 1: Node 1
-cargo run --bin core 8080
-
-# Terminal 2: Node 2
-cargo run --bin core 8081 '127.0.0.1:8080'
-
-# Terminal 3: Visualization
-cargo run --bin viz
+cd core
+MESHLINK_API_PORT=17081 cargo run --bin core --release -- 8081 127.0.0.1:8080
 ```
 
-### 3. Use CLI
+Then **CLI** (third terminal):
 
 ```bash
-# Rust CLI
-cargo run --bin cli -- status
-cargo run --bin cli -- broadcast "Hello MeshNet!"
-
-# Python CLI
 cd python_cli
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-python cli.py status
-python cli.py broadcast "Hello from Python!"
+
+MESHLINK_API_PORT=17080 python3 cli.py -i
 ```
 
-### 4. Run Web Interface
+Try:
+- `status`
+- `peers`
+- `broadcast hello`
+
+Then **web view** (fourth terminal):
 
 ```bash
-# Backend
-cd web/backend
-pip install fastapi uvicorn
-python app.py
-
-# Open browser
-open http://localhost:8000
+cd web/frontend
+python3 -m http.server 8081
 ```
 
-## 🔒 Features
+Open `http://localhost:8081`.
 
-- **P2P Networking**: Fully decentralized, no central servers
-- **Encryption**: RSA-2048 key exchange + AES-256-GCM session encryption
-- **🧠 AI Routing**: Self-learning adaptive routing based on latency, uptime, reliability, and route history
-- **🔐 PQC Encryption**: Post-quantum cryptography support (Kyber768 planned)
-- **Peer Discovery**: Automatic LAN/Wi-Fi peer discovery
-- **Mesh Sites**: Decentralized websites hosted on the network
-- **Web Dashboard**: Real-time network visualization and chat
-- **CLI Interface**: Beautiful Rust and Python CLIs with rich terminal UI
+### Notes (frugal but important)
 
-## 🧠 AI Routing
+- **API port formula**: `MESHLINK_API_PORT = 9000 + P2P_PORT` (e.g. 8080 → 17080).
+- If you see `Address already in use`, stop old nodes: `killall core` (macOS/Linux).
+- If peers don’t connect, see `docs/TROUBLESHOOTING.md`.
 
-MeshLink uses self-learning adaptive routing to optimize message delivery:
+### Documentation
 
-- **Peer Scoring**: Calculates scores based on latency, uptime, reliability, and route success rate
-- **Adaptive Learning**: Uses exponential moving average (α=0.7, β=0.3) to blend historical and current performance
-- **Top-N Selection**: Forwards messages to top 3 peers based on scores
-- **Route History**: Tracks success/failure rates for continuous improvement
+- `docs/protocol_spec.md`
+- `docs/architecture.md`
+- `docs/ai_routing.md`
 
-See [docs/ai_routing.md](docs/ai_routing.md) for detailed algorithm description.
+### CI / Pages
 
-## 🔐 PQC Encryption
-
-Post-quantum cryptography support for future-proof security:
-
-- **Current**: RSA-2048 OAEP for key exchange (quantum-vulnerable but fast)
-- **Planned**: Kyber768 for post-quantum security (NIST-standardized)
-- **Hybrid Approach**: RSA for compatibility, PQC for future-proofing
-- **Fallback**: Automatic fallback to RSA if PQC unavailable
-
-See [docs/crypto_benchmark.md](docs/crypto_benchmark.md) for performance benchmarks.
-
-## 🎥 Demo
-
-### Quick Demo
-
-```bash
-# Run demo script (3 nodes)
-./scripts/demo_local.sh
-```
-
-### Manual Demo
-
-```bash
-# Terminal 1: Node 1
-cargo run --bin core --release -- 8082
-
-# Terminal 2: Node 2
-cargo run --bin core --release -- 8083 127.0.0.1:8082
-
-# Terminal 3: Node 3
-cargo run --bin core --release -- 8084 127.0.0.1:8082
-
-# Terminal 4: Send message
-MESHLINK_API_PORT=17082 cargo run --bin cli -- broadcast "MeshNet AI+PQC demo"
-```
-
-### Visualization
-
-```bash
-# Run network visualization
-cargo run --bin viz
-```
-
-## 📜 Whitepaper
-
-Read the full technical whitepaper: [docs/whitepaper_v1.md](docs/whitepaper_v1.md)
-
-**Highlights**:
-- Problem statement (centralization, censorship, quantum threat)
-- Architecture and protocol design
-- AI-routing algorithm with adaptive learning
-- Post-quantum cryptography implementation
-- Test results and performance metrics
-- Future work and roadmap
-
-## 📚 Documentation
-
-See `docs/` directory for:
-- `whitepaper_v1.md` - Full technical whitepaper
-- `architecture.md` - System architecture
-- `protocol_spec.md` - Protocol specification
-- `ai_routing.md` - AI routing algorithm details
-- `crypto_benchmark.md` - Cryptographic performance benchmarks
-- `web_spec.md` - Elysium Web specification
-- `roadmap.md` - Development roadmap
-
-## 🧪 Testing
-
-```bash
-# Run Rust tests
-cd core
-cargo test
-
-# Run Python CLI tests
-cd python_cli
-python -m pytest tests/
-```
-
-## 📝 License
-
-MIT License © 2025
-
-## 🤝 Contributing
-
-This is a research project. Contributions welcome!
+- Rust CI: `.github/workflows/rust.yml`
+- GitHub Pages deploy: `.github/workflows/pages.yml` (deploys `web/frontend/`)
 
