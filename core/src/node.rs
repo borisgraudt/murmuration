@@ -7,6 +7,7 @@ use crate::config::Config;
 use crate::error::{MeshError, Result};
 use crate::elysium::packet::ElysiumPacket;
 use crate::identity;
+use crate::peer_store;
 use crate::p2p::discovery::DiscoveryManager;
 use crate::p2p::encryption::{EncryptionManager, SessionKeyManager};
 use crate::p2p::peer::{ConnectionState, PeerManager};
@@ -155,6 +156,24 @@ impl Node {
                 // Generate temporary ID, will be updated during handshake
                 let temp_id = format!("peer-{}", addr);
                 self.peer_manager.add_peer(temp_id, addr).await;
+            }
+        }
+
+        // Bootstrap from cached discovery peers (user-friendly: works even if you don't pass peer args)
+        if let Some(dir) = self.config.data_dir.as_ref() {
+            match peer_store::load_cached_peers(dir) {
+                Ok(addrs) => {
+                    if !addrs.is_empty() {
+                        info!("Bootstrap cache: loaded {} peer(s) from {}", addrs.len(), dir.display());
+                    }
+                    for addr in addrs {
+                        let temp_id = format!("peer-{}", addr);
+                        self.peer_manager.add_peer(temp_id, addr).await;
+                    }
+                }
+                Err(e) => {
+                    debug!("Bootstrap cache: failed to load peers: {}", e);
+                }
             }
         }
 
@@ -593,8 +612,11 @@ impl Node {
                     continue;
                 }
 
-                // Skip if trying to connect to ourselves
-                if peer.address.port() == self.config.listen_addr.port() {
+                // Skip if trying to connect to ourselves (by ID or obvious loopback/port match)
+                if peer.node_id == self.id
+                    || (peer.address.ip().is_loopback()
+                        && peer.address.port() == self.config.listen_addr.port())
+                {
                     continue;
                 }
 
@@ -618,6 +640,9 @@ impl Node {
 
     /// Connect to a specific peer
     async fn connect_to_peer(&self, peer_id: String, addr: SocketAddr) {
+        if peer_id == self.id {
+            return;
+        }
         // Double-check we're not already connected or connecting
         // Also check by address to catch cases where peer_id might be different
         let all_peers = self.peer_manager.get_all_peers().await;
@@ -1299,6 +1324,13 @@ impl Node {
 
             info!("Discovered peer {} at {}", node_id, addr);
             self.peer_manager.add_peer(node_id.clone(), addr).await;
+
+            // Persist for future boots (best-effort)
+            if let Some(dir) = self.config.data_dir.as_ref() {
+                if let Err(e) = peer_store::record_peer(dir, addr) {
+                    debug!("Failed to record discovered peer {}: {}", addr, e);
+                }
+            }
 
             // Try to connect if not already connected
             let connected = self.peer_manager.get_connected_peers().await;
