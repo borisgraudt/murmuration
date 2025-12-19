@@ -105,9 +105,9 @@ class MeshLinkClient:
         """Show error in Claude Code style"""
         console.print(
             Panel(
-                f"[{THEME['error']}]{message}[/{THEME['error']}]",
-                title=f"[{THEME['accent']}]{title}[/{THEME['accent']}]",
-                border_style=THEME["accent"],
+                f"[red]{message}[/red]",
+                title=f"[yellow]{title}[/yellow]",
+                border_style="yellow",
                 box=box.ROUNDED,
             )
         )
@@ -126,7 +126,7 @@ class MeshLinkClient:
         
         data = response.get("data", {})
         message_id = data.get("message_id", "unknown")
-        console.print(f"[{THEME['success']}]✓ Message sent: [{THEME['accent']}]{message_id}[/{THEME['accent']}][/{THEME['success']}]")
+        console.print(f"[green]✓ Message sent: [yellow]{message_id}[/yellow][/green]")
         return True
     
     def list_peers(self):
@@ -142,7 +142,7 @@ class MeshLinkClient:
         peers = data.get("peers", [])
         
         if not peers:
-            console.print(f"[{THEME['text_dim']}]No peers connected[/{THEME['text_dim']}]")
+            console.print("[dim]No peers connected[/dim]")
             return
         
         # Claude Code style peer list
@@ -153,25 +153,25 @@ class MeshLinkClient:
             node_id = peer.get("id", "unknown")
             
             if "Connected" in state:
-                status = f"[{THEME['success']}]● Connected[/{THEME['success']}]"
+                status = "[green]● Connected[/green]"
             elif "Handshaking" in state or "Connecting" in state:
-                status = f"[{THEME['accent']}]● Connecting[/{THEME['accent']}]"
+                status = "[yellow]● Connecting[/yellow]"
             else:
-                status = f"[{THEME['error']}]● Disconnected[/{THEME['error']}]"
+                status = "[red]● Disconnected[/red]"
             
-            peer_lines.append(f"[{THEME['text']}]{node_id[:36]}...[/{THEME['text']}]")
-            peer_lines.append(f"  [{THEME['text_dim']}]{addr}[/{THEME['text_dim']}] {status}")
+            peer_lines.append(f"{node_id[:36]}...")
+            peer_lines.append(f"  [dim]{addr}[/dim] {status}")
         
         content = "\n".join(peer_lines)
         console.print(
             Panel(
                 content,
-                title=f"[{THEME['accent']}]Connected Peers[/{THEME['accent']}]",
-                border_style=THEME["accent"],
+                title="[yellow]Connected Peers[/yellow]",
+                border_style="yellow",
                 box=box.ROUNDED,
             )
         )
-        console.print(f"[{THEME['text_dim']}]Total: {len(peers)} peer(s)[/{THEME['text_dim']}]")
+        console.print(f"[dim]Total: {len(peers)} peer(s)[/dim]")
     
     def show_status(self):
         """Show node status in Claude Code style"""
@@ -192,21 +192,21 @@ class MeshLinkClient:
         
         # Claude Code style status panel
         status_content = f"""
-[{THEME['text']}]Node ID:[/{THEME['text']}] [{THEME['accent']}]{node_id}[/{THEME['accent']}]
+Node ID: [yellow]{node_id}[/yellow]
 
-[{THEME['text']}]Connected:[/{THEME['text']}] [{THEME['success']}]{connected}[/{THEME['success']}][{THEME['text_dim']}]/{total}[/{THEME['text_dim']}] [{THEME['text_dim']}]peers[/{THEME['text_dim']}]
+Connected: [green]{connected}[/green][dim]/{total}[/dim] [dim]peers[/dim]
 
-[{THEME['text']}]API Port:[/{THEME['text']}] [{THEME['accent']}]{self.api_port}[/{THEME['accent']}]
+API Port: [yellow]{self.api_port}[/yellow]
         """.strip()
         
         if not has_peers:
-            status_content += f"\n\n[{THEME['accent']}]⚠ Protocol error: No connected peers[/{THEME['accent']}]"
+            status_content += f"\n\n[yellow]⚠ Protocol error: No connected peers[/yellow]"
         
         console.print(
             Panel(
                 Align.left(Text.from_markup(status_content)),
-                title=f"[{THEME['accent']}]⚡ MeshLink Node Status[/{THEME['accent']}]",
-                border_style=THEME["accent"],
+                title="[yellow]⚡ MeshLink Node Status[/yellow]",
+                border_style="yellow",
                 box=box.ROUNDED,
                 padding=(1, 2),
             )
@@ -214,12 +214,12 @@ class MeshLinkClient:
 
 def print_welcome():
     """Print welcome message in Claude Code style"""
-    welcome = f"""
-[{THEME['accent']}]╔═══════════════════════════════════════════════════════════╗[/{THEME['accent']}]
-[{THEME['accent']}]║[/{THEME['accent']}]  [{THEME['text']}]⚡ MeshLink CLI[/{THEME['text']}] - Decentralized P2P Network  [{THEME['accent']}]║[/{THEME['accent']}]
-[{THEME['accent']}]╚═══════════════════════════════════════════════════════════╝[/{THEME['accent']}]
+    welcome = """
+[yellow]╔═══════════════════════════════════════════════════════════╗[/yellow]
+[yellow]║[/yellow]  [white]⚡ MeshLink CLI[/white] - Decentralized P2P Network  [yellow]║[/yellow]
+[yellow]╚═══════════════════════════════════════════════════════════╝[/yellow]
 
-[{THEME['text_dim']}]Type [{THEME['accent']}]help[/{THEME['accent']}] for commands, [{THEME['accent']}]exit[/{THEME['accent']}] to quit[/{THEME['text_dim']}]
+[dim]Type [yellow]help[/yellow] for commands, [yellow]exit[/yellow] to quit[/dim]
     """.strip()
     console.print(welcome)
     console.print()
@@ -230,7 +230,7 @@ def run_repl(client: MeshLinkClient):
     
     while True:
         try:
-            line = Prompt.ask(f"[{THEME['accent']}]meshlink[/{THEME['accent']}] [{THEME['text_dim']}]»[/{THEME['text_dim']}]").strip()
+            line = Prompt.ask("[yellow]meshlink[/yellow] [dim]»[/dim]").strip()
             if not line:
                 continue
             
@@ -239,51 +239,51 @@ def run_repl(client: MeshLinkClient):
             args = parts[1] if len(parts) > 1 else ""
             
             if command == "exit" or command == "quit":
-                console.print(f"\n[{THEME['success']}]Goodbye![/{THEME['success']}] [{THEME['text_dim']}]👋[/{THEME['text_dim']}]\n")
+                console.print("\n[green]Goodbye![/green] [dim]👋[/dim]\n")
                 break
             elif command == "help":
-                help_content = f"""
-[{THEME['accent']}]Available Commands:[/{THEME['accent']}]
+                help_content = """
+[yellow]Available Commands:[/yellow]
 
-  [{THEME['accent']}]send[/{THEME['accent']}] <peer_id> <message>
+  [yellow]send[/yellow] <peer_id> <message>
       Send message to specific peer
 
-  [{THEME['accent']}]broadcast[/{THEME['accent']}] <message>
+  [yellow]broadcast[/yellow] <message>
       Broadcast message to all peers
 
-  [{THEME['accent']}]peers[/{THEME['accent']}]
+  [yellow]peers[/yellow]
       List all connected peers
 
-  [{THEME['accent']}]status[/{THEME['accent']}]
+  [yellow]status[/yellow]
       Show node status
 
-  [{THEME['accent']}]help[/{THEME['accent']}]
+  [yellow]help[/yellow]
       Show this help message
 
-  [{THEME['accent']}]exit[/{THEME['accent']}]
+  [yellow]exit[/yellow]
       Exit interactive mode
                 """.strip()
                 console.print(Panel(
                     help_content,
-                    title=f"[{THEME['accent']}]Help[/{THEME['accent']}]",
-                    border_style=THEME["accent"],
+                    title="[yellow]Help[/yellow]",
+                    border_style="yellow",
                     box=box.ROUNDED,
                 ))
                 console.print()
             elif command == "send":
                 if not args:
-                    console.print(f"[{THEME['accent']}]Usage: send <peer_id> <message>[/{THEME['accent']}]")
+                    console.print("[yellow]Usage: send <peer_id> <message>[/yellow]")
                     continue
                 send_parts = args.split(None, 1)
                 if len(send_parts) < 2:
-                    console.print(f"[{THEME['accent']}]Usage: send <peer_id> <message>[/{THEME['accent']}]")
+                    console.print("[yellow]Usage: send <peer_id> <message>[/yellow]")
                     continue
                 peer_id = send_parts[0]
                 message = send_parts[1]
                 client.send_message(peer_id, message)
             elif command == "broadcast":
                 if not args:
-                    console.print(f"[{THEME['accent']}]Usage: broadcast <message>[/{THEME['accent']}]")
+                    console.print("[yellow]Usage: broadcast <message>[/yellow]")
                     continue
                 client.send_message(None, args)
             elif command == "peers":
@@ -293,17 +293,17 @@ def run_repl(client: MeshLinkClient):
             else:
                 console.print(
                     Panel(
-                        f"[{THEME['accent']}]Unknown command: [{THEME['text']}]{command}[/{THEME['text']}][/{THEME['accent']}]\n\n[{THEME['text_dim']}]Type [{THEME['accent']}]help[/{THEME['accent']}] for available commands.[/{THEME['text_dim']}]",
-                        title=f"[{THEME['accent']}]Error[/{THEME['accent']}]",
-                        border_style=THEME["accent"],
+                        f"[yellow]Unknown command: [white]{command}[/white][/yellow]\n\n[dim]Type [yellow]help[/yellow] for available commands.[/dim]",
+                        title="[yellow]Error[/yellow]",
+                        border_style="yellow",
                         box=box.ROUNDED,
                     )
                 )
         except KeyboardInterrupt:
-            console.print(f"\n[{THEME['success']}]Goodbye![/{THEME['success']}] [{THEME['text_dim']}]👋[/{THEME['text_dim']}]\n")
+            console.print("\n[green]Goodbye![/green] [dim]👋[/dim]\n")
             break
         except EOFError:
-            console.print(f"\n[{THEME['success']}]Goodbye![/{THEME['success']}] [{THEME['text_dim']}]👋[/{THEME['text_dim']}]\n")
+            console.print("\n[green]Goodbye![/green] [dim]👋[/dim]\n")
             break
         except Exception as e:
             client._show_error("Exception", str(e))
@@ -321,15 +321,15 @@ def main():
     if len(sys.argv) < 2:
         console.print(
             Panel(
-                f"[{THEME['text']}]Usage:[/{THEME['text']}] [{THEME['accent']}]python cli.py[/{THEME['accent']}] <command> [args...]\n"
-                f"       [{THEME['accent']}]python cli.py[/{THEME['accent']}] [{THEME['text_dim']}][-i|--interactive|repl][/{THEME['text_dim']}]  - Interactive mode\n\n"
-                f"[{THEME['text']}]Commands:[/{THEME['text']}]\n"
-                f"  [{THEME['accent']}]send[/{THEME['accent']}] <peer_id> <message>  - Send message to specific peer\n"
-                f"  [{THEME['accent']}]broadcast[/{THEME['accent']}] <message>       - Broadcast message to all peers\n"
-                f"  [{THEME['accent']}]peers[/{THEME['accent']}]                     - List all peers\n"
-                f"  [{THEME['accent']}]status[/{THEME['accent']}]                    - Show node status",
-                title=f"[{THEME['accent']}]MeshLink CLI[/{THEME['accent']}]",
-                border_style=THEME["accent"],
+                "[white]Usage:[/white] [yellow]python cli.py[/yellow] <command> [args...]\n"
+                "       [yellow]python cli.py[/yellow] [dim][-i|--interactive|repl][/dim]  - Interactive mode\n\n"
+                "[white]Commands:[/white]\n"
+                "  [yellow]send[/yellow] <peer_id> <message>  - Send message to specific peer\n"
+                "  [yellow]broadcast[/yellow] <message>       - Broadcast message to all peers\n"
+                "  [yellow]peers[/yellow]                     - List all peers\n"
+                "  [yellow]status[/yellow]                    - Show node status",
+                title="[yellow]MeshLink CLI[/yellow]",
+                border_style="yellow",
                 box=box.ROUNDED,
             )
         )
@@ -340,7 +340,7 @@ def main():
     
     if command == "send":
         if len(sys.argv) < 4:
-            console.print(f"[{THEME['accent']}]Usage: python cli.py send <peer_id> <message>[/{THEME['accent']}]")
+            console.print("[yellow]Usage: python cli.py send <peer_id> <message>[/yellow]")
             sys.exit(1)
         peer_id = sys.argv[2]
         message = " ".join(sys.argv[3:])
@@ -348,7 +348,7 @@ def main():
     
     elif command == "broadcast":
         if len(sys.argv) < 3:
-            console.print(f"[{THEME['accent']}]Usage: python cli.py broadcast <message>[/{THEME['accent']}]")
+            console.print("[yellow]Usage: python cli.py broadcast <message>[/yellow]")
             sys.exit(1)
         message = " ".join(sys.argv[2:])
         client.send_message(None, message)
@@ -362,9 +362,9 @@ def main():
     else:
         console.print(
             Panel(
-                f"[{THEME['error']}]Unknown command:[/{THEME['error']}] [{THEME['text']}]{command}[/{THEME['text']}]",
-                title=f"[{THEME['accent']}]Error[/{THEME['accent']}]",
-                border_style=THEME["accent"],
+                f"[red]Unknown command:[/red] [white]{command}[/white]",
+                title="[yellow]Error[/yellow]",
+                border_style="yellow",
                 box=box.ROUNDED,
             )
         )
