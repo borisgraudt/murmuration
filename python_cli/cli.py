@@ -306,7 +306,7 @@ def run_repl(client: MeshLinkClient):
             console.print(f"\n[{THEME['success']}]Goodbye![/{THEME['success']}] [{THEME['text_dim']}]👋[/{THEME['text_dim']}]\n")
             break
         except Exception as e:
-            self._show_error("Exception", str(e))
+            client._show_error("Exception", str(e))
 
 def main():
     """Main CLI entry point"""
