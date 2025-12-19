@@ -340,11 +340,17 @@ impl PeerManager {
             })?;
             let len = u32::from_be_bytes(len_buf) as usize;
 
-            if len > 65536 {
-                return Err(MeshError::Peer(
-                    "Handshake ack message too large".to_string(),
-                ));
+            // Increased limit to 1MB to accommodate RSA keys (2048-bit keys can be ~500 bytes when base64 encoded)
+            // Plus JSON overhead, this should be more than enough
+            const MAX_HANDSHAKE_SIZE: usize = 1024 * 1024; // 1MB
+            if len > MAX_HANDSHAKE_SIZE {
+                return Err(MeshError::Peer(format!(
+                    "Handshake ack message too large: {} bytes (max: {})",
+                    len, MAX_HANDSHAKE_SIZE
+                )));
             }
+
+            tracing::debug!("Reading handshake ack, size: {} bytes", len);
 
             let mut buf = vec![0u8; len];
             stream
@@ -419,9 +425,16 @@ impl PeerManager {
                 .map_err(|e| MeshError::Peer(format!("Failed to read handshake length: {}", e)))?;
             let len = u32::from_be_bytes(len_buf) as usize;
 
-            if len > 65536 {
-                return Err(MeshError::Peer("Handshake message too large".to_string()));
+            // Increased limit to 1MB to accommodate RSA keys
+            const MAX_HANDSHAKE_SIZE: usize = 1024 * 1024; // 1MB
+            if len > MAX_HANDSHAKE_SIZE {
+                return Err(MeshError::Peer(format!(
+                    "Handshake message too large: {} bytes (max: {})",
+                    len, MAX_HANDSHAKE_SIZE
+                )));
             }
+
+            tracing::debug!("Reading handshake, size: {} bytes", len);
 
             let mut buf = vec![0u8; len];
             stream
