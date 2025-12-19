@@ -29,6 +29,22 @@ enum ApiRequest {
         #[serde(default)]
         timeout_ms: Option<u64>,
     },
+    #[serde(rename = "inbox")]
+    Inbox {
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
+    #[serde(rename = "watch")]
+    Watch {
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default)]
+        timeout_ms: Option<u64>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
 }
 
 /// API response
@@ -195,6 +211,27 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 }))),
                 Err(e) => Ok(ApiResponse::error(format!("{}", e))),
             }
+        }
+        ApiRequest::Inbox { since, limit } => {
+            let limit = limit.unwrap_or(50).clamp(1, 500);
+            let (next_since, messages) = node.list_inbox(since, limit).await;
+            Ok(ApiResponse::success(serde_json::json!({
+                "next_since": next_since,
+                "messages": messages
+            })))
+        }
+        ApiRequest::Watch {
+            since,
+            timeout_ms,
+            limit,
+        } => {
+            let limit = limit.unwrap_or(50).clamp(1, 500);
+            let timeout = Duration::from_millis(timeout_ms.unwrap_or(20_000).min(60_000));
+            let (next_since, messages) = node.watch_inbox(since.unwrap_or(0), timeout, limit).await;
+            Ok(ApiResponse::success(serde_json::json!({
+                "next_since": next_since,
+                "messages": messages
+            })))
         }
     }
 }

@@ -212,6 +212,45 @@ API Port: [yellow]{self.api_port}[/yellow]
             )
         )
 
+    def inbox(self, since: int = 0, limit: int = 50):
+        """Fetch recent inbox messages"""
+        request = {"command": "inbox", "since": since, "limit": limit}
+        response = self._send_request(request)
+        if not response.get("success", False) or "error" in response:
+            self._show_error("Inbox failed", response.get("error", "Unknown error"))
+            return 0, []
+        data = response.get("data", {})
+        return int(data.get("next_since", since)), data.get("messages", [])
+
+    def watch(self, since: int = 0, timeout_ms: int = 20000, limit: int = 50):
+        """Long-poll for new inbox messages"""
+        request = {
+            "command": "watch",
+            "since": since,
+            "timeout_ms": timeout_ms,
+            "limit": limit,
+        }
+        response = self._send_request(request)
+        if not response.get("success", False) or "error" in response:
+            self._show_error("Watch failed", response.get("error", "Unknown error"))
+            return since, []
+        data = response.get("data", {})
+        return int(data.get("next_since", since)), data.get("messages", [])
+
+
+def format_inbox_message(m: Dict[str, Any]) -> str:
+    ts = m.get("timestamp", "")
+    direction = m.get("direction", "?")
+    kind = m.get("kind", "?")
+    src = m.get("from", "?")
+    dst = m.get("to", None) or "broadcast"
+    preview = m.get("preview", "")
+    msg_id = m.get("message_id", "")
+    if msg_id:
+        msg_id = msg_id[:8]
+    arrow = "→" if direction == "out" else "←"
+    return f"[dim]{ts}[/dim] [yellow]{kind}[/yellow] {arrow} [white]{src}[/white] → [white]{dst}[/white] [dim]({msg_id})[/dim]\n  {preview}"
+
 def print_welcome():
     """Print welcome message in Claude Code style"""
     welcome = """
@@ -257,6 +296,12 @@ def run_repl(client: MeshLinkClient):
   [yellow]status[/yellow]
       Show node status
 
+  [yellow]inbox[/yellow] [n]
+      Show last N messages (default 20)
+
+  [yellow]watch[/yellow]
+      Live stream messages (Ctrl+C to stop)
+
   [yellow]help[/yellow]
       Show this help message
 
@@ -290,6 +335,28 @@ def run_repl(client: MeshLinkClient):
                 client.list_peers()
             elif command == "status":
                 client.show_status()
+            elif command == "inbox":
+                n = 20
+                if args.strip().isdigit():
+                    n = int(args.strip())
+                _, msgs = client.inbox(0, n)
+                if not msgs:
+                    console.print("[dim]Inbox is empty[/dim]")
+                else:
+                    console.print(Panel("\n\n".join(format_inbox_message(m) for m in msgs),
+                                        title="[yellow]Inbox[/yellow]",
+                                        border_style="yellow",
+                                        box=box.ROUNDED))
+            elif command == "watch":
+                console.print("[dim]Watching messages… Ctrl+C to stop[/dim]")
+                since = 0
+                try:
+                    while True:
+                        since, msgs = client.watch(since=since, timeout_ms=20000, limit=50)
+                        for m in msgs:
+                            console.print(format_inbox_message(m))
+                except KeyboardInterrupt:
+                    console.print("\n[dim]Stopped watch[/dim]\n")
             else:
                 console.print(
                     Panel(
@@ -327,7 +394,9 @@ def main():
                 "  [yellow]send[/yellow] <peer_id> <message>  - Send message to specific peer\n"
                 "  [yellow]broadcast[/yellow] <message>       - Broadcast message to all peers\n"
                 "  [yellow]peers[/yellow]                     - List all peers\n"
-                "  [yellow]status[/yellow]                    - Show node status",
+                "  [yellow]status[/yellow]                    - Show node status\n"
+                "  [yellow]inbox[/yellow] [n]                 - Show last N messages\n"
+                "  [yellow]watch[/yellow]                     - Live stream messages",
                 title="[yellow]MeshLink CLI[/yellow]",
                 border_style="yellow",
                 box=box.ROUNDED,
@@ -358,6 +427,28 @@ def main():
     
     elif command == "status":
         client.show_status()
+    elif command == "inbox":
+        n = 20
+        if len(sys.argv) >= 3 and sys.argv[2].isdigit():
+            n = int(sys.argv[2])
+        _, msgs = client.inbox(0, n)
+        if not msgs:
+            console.print("[dim]Inbox is empty[/dim]")
+        else:
+            console.print(Panel("\n\n".join(format_inbox_message(m) for m in msgs),
+                                title="[yellow]Inbox[/yellow]",
+                                border_style="yellow",
+                                box=box.ROUNDED))
+    elif command == "watch":
+        console.print("[dim]Watching messages… Ctrl+C to stop[/dim]")
+        since = 0
+        try:
+            while True:
+                since, msgs = client.watch(since=since, timeout_ms=20000, limit=50)
+                for m in msgs:
+                    console.print(format_inbox_message(m))
+        except KeyboardInterrupt:
+            console.print("\n[dim]Stopped watch[/dim]\n")
     
     else:
         console.print(

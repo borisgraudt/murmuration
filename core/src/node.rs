@@ -4,16 +4,17 @@ use crate::ai::routing_logger::{
 };
 /// Main node implementation
 use crate::config::Config;
-use crate::error::{MeshError, Result};
 use crate::elysium::packet::ElysiumPacket;
+use crate::error::{MeshError, Result};
 use crate::identity;
-use crate::peer_store;
 use crate::p2p::discovery::DiscoveryManager;
 use crate::p2p::encryption::{EncryptionManager, SessionKeyManager};
 use crate::p2p::peer::{ConnectionState, PeerManager};
 use crate::p2p::protocol::{Frame, Message};
+use crate::peer_store;
 use crate::utils::event_emitter::EventEmitter;
-use std::collections::HashMap;
+use serde::Serialize;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -23,6 +24,22 @@ use tokio::sync::{mpsc, oneshot, Notify, RwLock, Semaphore};
 use tokio::time::{interval, sleep, timeout};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+const INBOX_MAX_MESSAGES: usize = 500;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct InboxMessage {
+    pub seq: u64,
+    pub timestamp: String,
+    pub direction: String, // "in" | "out"
+    pub kind: String,      // "data" | "mesh"
+    pub peer: String,      // peer_id for transport (or best-effort)
+    pub from: String,
+    pub to: Option<String>,
+    pub message_id: Option<String>,
+    pub bytes: usize,
+    pub preview: String,
+}
 
 #[derive(Clone)]
 struct PeerChannel {
@@ -81,15 +98,19 @@ pub struct Node {
 
     /// Connection storm protection: per-address cooldown
     last_connect_attempt: Arc<RwLock<HashMap<SocketAddr, Instant>>>,
+
+    /// In-memory inbox for user-visible messages (used by CLI/watch)
+    inbox: Arc<RwLock<VecDeque<InboxMessage>>>,
+    inbox_next_seq: Arc<RwLock<u64>>,
+    inbox_notify: Arc<Notify>,
 }
 
 impl Node {
     /// Create a new node
     pub fn new(mut config: Config) -> Result<Self> {
-        let data_dir = config
-            .data_dir
-            .clone()
-            .unwrap_or_else(|| std::path::PathBuf::from(format!(".ely/node-{}", config.listen_addr.port())));
+        let data_dir = config.data_dir.clone().unwrap_or_else(|| {
+            std::path::PathBuf::from(format!(".ely/node-{}", config.listen_addr.port()))
+        });
         config.data_dir = Some(data_dir.clone());
 
         let ident = identity::load_or_create(&data_dir)?;
@@ -104,9 +125,7 @@ impl Node {
 
         info!("Created new node with ID: {}", id);
 
-        let default_api_port = 9000u16
-            .checked_add(config.listen_addr.port())
-            .unwrap_or(0);
+        let default_api_port = 9000u16.checked_add(config.listen_addr.port()).unwrap_or(0);
         let initial_api_addr: SocketAddr = config.api_addr.unwrap_or_else(|| {
             format!("127.0.0.1:{}", default_api_port)
                 .parse()
@@ -133,11 +152,65 @@ impl Node {
             discovery_port,
             connect_semaphore: Arc::new(Semaphore::new(max_connect_in_flight)),
             last_connect_attempt: Arc::new(RwLock::new(HashMap::new())),
+            inbox: Arc::new(RwLock::new(VecDeque::new())),
+            inbox_next_seq: Arc::new(RwLock::new(1)),
+            inbox_notify: Arc::new(Notify::new()),
         })
     }
 
     pub async fn get_api_addr(&self) -> SocketAddr {
         *self.api_addr.read().await
+    }
+
+    async fn push_inbox(&self, mut msg: InboxMessage) {
+        // assign seq
+        let seq = {
+            let mut next = self.inbox_next_seq.write().await;
+            let seq = *next;
+            *next = next.saturating_add(1);
+            seq
+        };
+        msg.seq = seq;
+
+        let mut inbox = self.inbox.write().await;
+        inbox.push_back(msg);
+        while inbox.len() > INBOX_MAX_MESSAGES {
+            inbox.pop_front();
+        }
+        drop(inbox);
+        self.inbox_notify.notify_waiters();
+    }
+
+    pub async fn list_inbox(&self, since: Option<u64>, limit: usize) -> (u64, Vec<InboxMessage>) {
+        let since = since.unwrap_or(0);
+        let limit = limit.clamp(1, INBOX_MAX_MESSAGES);
+
+        let inbox = self.inbox.read().await;
+        let mut out: Vec<InboxMessage> = inbox.iter().filter(|m| m.seq > since).cloned().collect();
+        // keep only last `limit`
+        if out.len() > limit {
+            out = out.split_off(out.len() - limit);
+        }
+        let next_since = inbox.back().map(|m| m.seq).unwrap_or(since);
+        (next_since, out)
+    }
+
+    pub async fn watch_inbox(
+        &self,
+        since: u64,
+        timeout_dur: Duration,
+        limit: usize,
+    ) -> (u64, Vec<InboxMessage>) {
+        // Fast path: already have newer messages
+        let (next, msgs) = self.list_inbox(Some(since), limit).await;
+        if !msgs.is_empty() {
+            return (next, msgs);
+        }
+
+        // Wait for new messages or timeout
+        let notified = self.inbox_notify.notified();
+        let _ = tokio::time::timeout(timeout_dur, notified).await;
+        self.list_inbox(Some(since), limit).await
     }
 
     pub fn get_discovery_port(&self) -> u16 {
@@ -173,7 +246,11 @@ impl Node {
             match peer_store::load_cached_peers(dir) {
                 Ok(addrs) => {
                     if !addrs.is_empty() {
-                        info!("Bootstrap cache: loaded {} peer(s) from {}", addrs.len(), dir.display());
+                        info!(
+                            "Bootstrap cache: loaded {} peer(s) from {}",
+                            addrs.len(),
+                            dir.display()
+                        );
                     }
                     for addr in addrs {
                         let temp_id = format!("peer-{}", addr);
@@ -340,7 +417,11 @@ impl Node {
         }
 
         // 2) Address-based match (peer_id known in PeerManager but channel keyed differently)
-        let target_addr = self.peer_manager.get_peer(peer_id).await.map(|p| p.address)?;
+        let target_addr = self
+            .peer_manager
+            .get_peer(peer_id)
+            .await
+            .map(|p| p.address)?;
 
         // Snapshot sender IDs to avoid holding the lock across awaits
         let sender_ids: Vec<String> = {
@@ -681,13 +762,8 @@ impl Node {
             .map(|p| p.connection_attempts)
             .unwrap_or(0);
         let exp = attempts.min(6); // 2^6 = 64x
-        let factor: u32 = 1u32
-            .checked_shl(exp)
-            .unwrap_or(u32::MAX);
-        let backoff = self
-            .config
-            .connect_cooldown
-            .saturating_mul(factor);
+        let factor: u32 = 1u32.checked_shl(exp).unwrap_or(u32::MAX);
+        let backoff = self.config.connect_cooldown.saturating_mul(factor);
         let backoff = backoff.min(self.config.connect_backoff_max);
 
         // Cooldown by address to avoid reconnect storms (especially with discovery bursts)
@@ -1121,6 +1197,20 @@ impl Node {
                         payload.len(),
                         display_content
                     );
+                    // Store in inbox so CLI can display it
+                    self.push_inbox(InboxMessage {
+                        seq: 0,
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        direction: "in".to_string(),
+                        kind: "data".to_string(),
+                        peer: peer_id.clone(),
+                        from: peer_id.clone(),
+                        to: Some(self.id.clone()),
+                        message_id: Some(message_id.clone()),
+                        bytes: payload.len(),
+                        preview: display_content.clone(),
+                    })
+                    .await;
                     self.event_emitter
                         .emit("message_received", Some(&peer_id))
                         .await;
@@ -1355,6 +1445,9 @@ impl Clone for Node {
             discovery_port: self.discovery_port,
             connect_semaphore: self.connect_semaphore.clone(),
             last_connect_attempt: self.last_connect_attempt.clone(),
+            inbox: self.inbox.clone(),
+            inbox_next_seq: self.inbox_next_seq.clone(),
+            inbox_notify: self.inbox_notify.clone(),
         }
     }
 }
@@ -1461,8 +1554,12 @@ impl Node {
         let is_for_us = self.router.is_for_us(&message);
 
         // Decode ElysiumPacket if present (backward compatible: ignore errors)
+        let mut decoded_packet: Option<ElysiumPacket> = None;
         if let Ok(packet) = ElysiumPacket::from_bytes(&message.data) {
-            let dst = packet.dst.clone().unwrap_or_else(|| "broadcast".to_string());
+            let dst = packet
+                .dst
+                .clone()
+                .unwrap_or_else(|| "broadcast".to_string());
             let preview = String::from_utf8(packet.payload.clone())
                 .unwrap_or_else(|_| format!("{} bytes (binary)", packet.payload.len()));
             info!(
@@ -1476,6 +1573,7 @@ impl Node {
                     preview
                 }
             );
+            decoded_packet = Some(packet);
         }
 
         if is_for_us {
@@ -1486,7 +1584,50 @@ impl Node {
             self.event_emitter
                 .emit("mesh_message_received", Some(&message_id))
                 .await;
-            // TODO: Deliver to application layer
+            // Deliver to application layer (inbox for CLI)
+            if let Some(packet) = decoded_packet {
+                let preview = String::from_utf8(packet.payload.clone())
+                    .unwrap_or_else(|_| format!("{} bytes (binary)", packet.payload.len()));
+                let preview = if preview.len() > 200 {
+                    format!("{}...", &preview[..200])
+                } else {
+                    preview
+                };
+                self.push_inbox(InboxMessage {
+                    seq: 0,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    direction: "in".to_string(),
+                    kind: "mesh".to_string(),
+                    peer: from_peer.to_string(),
+                    from: packet.src,
+                    to: packet.dst,
+                    message_id: Some(message_id.clone()),
+                    bytes: packet.payload.len(),
+                    preview,
+                })
+                .await;
+            } else {
+                let preview = String::from_utf8(message.data.clone())
+                    .unwrap_or_else(|_| format!("{} bytes (binary)", message.data.len()));
+                let preview = if preview.len() > 200 {
+                    format!("{}...", &preview[..200])
+                } else {
+                    preview
+                };
+                self.push_inbox(InboxMessage {
+                    seq: 0,
+                    timestamp: chrono::Utc::now().to_rfc3339(),
+                    direction: "in".to_string(),
+                    kind: "mesh".to_string(),
+                    peer: from_peer.to_string(),
+                    from: from_peer.to_string(),
+                    to: message.to.clone(),
+                    message_id: Some(message_id.clone()),
+                    bytes: message.data.len(),
+                    preview,
+                })
+                .await;
+            }
 
             // If it's a directed message (not broadcast), don't forward
             if !is_broadcast {
@@ -1538,7 +1679,10 @@ impl Node {
                             "  Peer {}: score={:.3}, latency={}, uptime={:.1}s, reliability={:.2}",
                             peer.node_id,
                             score,
-                            peer.metrics.latency.map(|d| format!("{:.0}ms", d.as_millis())).unwrap_or_else(|| "N/A".to_string()),
+                            peer.metrics
+                                .latency
+                                .map(|d| format!("{:.0}ms", d.as_millis()))
+                                .unwrap_or_else(|| "N/A".to_string()),
                             peer.metrics.uptime.as_secs_f64(),
                             peer.metrics.reliability_score()
                         );
@@ -1634,6 +1778,7 @@ impl Node {
         // Show message content for logging (before moving data)
         let content_preview = String::from_utf8(data.clone())
             .unwrap_or_else(|_| format!("{} bytes (binary)", data.len()));
+        let content_bytes_len = content_preview.len();
         let content_display = if content_preview.len() > 50 {
             format!("{}...", &content_preview[..50])
         } else {
@@ -1682,6 +1827,21 @@ impl Node {
             target_peers.len(),
             content_display
         );
+
+        // Store in local outbox so CLI watch shows our sends too
+        self.push_inbox(InboxMessage {
+            seq: 0,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            direction: "out".to_string(),
+            kind: "mesh".to_string(),
+            peer: to.clone().unwrap_or_else(|| "broadcast".to_string()),
+            from: self.id.clone(),
+            to: to.clone(),
+            message_id: Some(message_id.clone()),
+            bytes: content_bytes_len,
+            preview: content_display.clone(),
+        })
+        .await;
 
         // Send as Data message to connected peers using existing connections
         for peer_id in &target_peers {
