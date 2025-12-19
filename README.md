@@ -55,6 +55,20 @@ python3 -m http.server 8081
 
 Open `http://localhost:8081`.
 
+### Install without Docker
+
+If you have Rust installed, you can install `ely` into your PATH:
+
+```bash
+cargo install --git https://github.com/borisgraudt/elysium.git --package meshlink_core --bin ely
+```
+
+Then:
+
+```bash
+ely start 8080
+```
+
 ### Notes (frugal but important)
 
 - **API port formula**: `MESHLINK_API_PORT = 9000 + P2P_PORT` (e.g. 8080 → 17080).
