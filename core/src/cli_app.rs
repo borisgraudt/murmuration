@@ -1,7 +1,9 @@
 use colored::*;
+use crate::{Config, Node};
 use std::io::Write;
 use std::net::TcpStream;
 use std::time::Duration;
+use tracing_subscriber::EnvFilter;
 
 /// Shared CLI implementation for both `cli` and `ely` binaries.
 pub fn run(args: Vec<String>) -> anyhow::Result<()> {
@@ -19,6 +21,26 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let command = &args[1];
 
     match command.as_str() {
+        "start" => {
+            // `ely start <p2p_port> [peer1] [peer2] ... [flags]`
+            // We reuse `Config::from_args` by shifting args left (so port becomes args[1]).
+            if args.len() < 3 {
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} start <p2p_port> [peer1] [peer2] ... [flags]", bin).yellow()
+                );
+                return Ok(());
+            }
+            start_node(&args[2..])?;
+        }
+        "chat" => {
+            if args.len() < 3 {
+                eprintln!("{}", format!("Usage: {} chat <peer_id|broadcast>", bin).yellow());
+                return Ok(());
+            }
+            let target = args[2].clone();
+            chat(target)?;
+        }
         "send" => {
             if args.len() < 4 {
                 eprintln!(
@@ -60,6 +82,16 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         "status" => {
             show_status()?;
         }
+        "inbox" => {
+            let n = args
+                .get(2)
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(20);
+            inbox(n)?;
+        }
+        "watch" => {
+            watch()?;
+        }
         _ => {
             eprintln!("{} Unknown command: {}", "✗".red().bold(), command.red());
             print_usage(&bin);
@@ -81,6 +113,14 @@ fn print_usage(bin: &str) {
     println!();
     println!("{}", "Commands:".bright_white().bold());
     println!(
+        "  {} <p2p_port> [peers...]   Start a node (P2P + discovery + local API)",
+        "start".cyan()
+    );
+    println!(
+        "  {} <peer_id|broadcast>     Interactive chat (Ctrl+C to exit)",
+        "chat".cyan()
+    );
+    println!(
         "  {} <peer_id> <message>    Send message to specific peer",
         "send".cyan()
     );
@@ -99,6 +139,14 @@ fn print_usage(bin: &str) {
     println!(
         "  {}                        Show node status",
         "status".cyan()
+    );
+    println!(
+        "  {} [n]                    Show last N messages from inbox (default 20)",
+        "inbox".cyan()
+    );
+    println!(
+        "  {}                        Live stream messages (Ctrl+C to exit)",
+        "watch".cyan()
     );
 }
 
@@ -175,6 +223,171 @@ fn send_message(peer_id: Option<String>, message: String) -> anyhow::Result<()> 
         std::process::exit(1);
     }
 
+    Ok(())
+}
+
+fn inbox(limit: usize) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+
+    let request = serde_json::json!({
+        "command": "inbox",
+        "since": 0,
+        "limit": limit
+    });
+
+    writeln!(stream, "{}", request)?;
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+    if !resp["success"].as_bool().unwrap_or(false) {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        anyhow::bail!("API error: {}", error);
+    }
+
+    let messages = resp["data"]["messages"].as_array().cloned().unwrap_or_default();
+    if messages.is_empty() {
+        println!("{}", "Inbox is empty".dimmed());
+        return Ok(());
+    }
+
+    for m in messages {
+        print_inbox_message(&m);
+        println!();
+    }
+    Ok(())
+}
+
+fn watch() -> anyhow::Result<()> {
+    let mut since: u64 = 0;
+    loop {
+        let api_port = get_api_port();
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+        stream.set_read_timeout(Some(Duration::from_secs(35)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(5)))?;
+
+        let request = serde_json::json!({
+            "command": "watch",
+            "since": since,
+            "timeout_ms": 20000,
+            "limit": 50
+        });
+
+        writeln!(stream, "{}", request)?;
+
+        let mut response = String::new();
+        use std::io::BufRead;
+        std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+        let resp: serde_json::Value = serde_json::from_str(&response)?;
+        if !resp["success"].as_bool().unwrap_or(false) {
+            let error = resp["error"].as_str().unwrap_or("Unknown error");
+            eprintln!("{} {}", "✗".red().bold(), error.red());
+            std::thread::sleep(Duration::from_millis(500));
+            continue;
+        }
+
+        if let Some(next) = resp["data"]["next_since"].as_u64() {
+            since = next;
+        }
+        if let Some(messages) = resp["data"]["messages"].as_array() {
+            for m in messages {
+                print_inbox_message(m);
+            }
+        }
+    }
+}
+
+fn print_inbox_message(m: &serde_json::Value) {
+    let ts = m["timestamp"].as_str().unwrap_or("");
+    let direction = m["direction"].as_str().unwrap_or("?");
+    let kind = m["kind"].as_str().unwrap_or("?");
+    let from = m["from"].as_str().unwrap_or("?");
+    let to = m["to"].as_str().unwrap_or("broadcast");
+    let preview = m["preview"].as_str().unwrap_or("");
+    let msg_id = m["message_id"]
+        .as_str()
+        .map(|s| s.chars().take(8).collect::<String>())
+        .unwrap_or_default();
+
+    let arrow = if direction == "out" { "→" } else { "←" };
+    let header = format!(
+        "{} {} {} {} {} {} {}",
+        ts.dimmed(),
+        kind.yellow(),
+        arrow,
+        from.bright_white(),
+        "→".dimmed(),
+        to.bright_white(),
+        if msg_id.is_empty() {
+            "".to_string()
+        } else {
+            format!("({})", msg_id).dimmed().to_string()
+        }
+    );
+    println!("{}", header);
+    println!("  {}", preview);
+}
+
+fn chat(target: String) -> anyhow::Result<()> {
+    println!(
+        "{} {}",
+        "Chat target:".bright_white().bold(),
+        target.cyan()
+    );
+    println!("{}", "Type messages and press Enter. Ctrl+C to exit.".dimmed());
+    println!();
+
+    // Background thread: stream inbox and print as it arrives.
+    std::thread::spawn(move || {
+        // Best-effort: filter locally by printing everything (simple MVP).
+        // Users can run `ely chat <peer>` on the right node if they want a 1:1 experience.
+        let _ = watch();
+    });
+
+    // Foreground: read stdin and send
+    use std::io::{self, BufRead};
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        let line = line.unwrap_or_default();
+        let msg = line.trim();
+        if msg.is_empty() {
+            continue;
+        }
+        if target == "broadcast" {
+            let _ = send_message(None, msg.to_string());
+        } else {
+            let _ = send_message(Some(normalize_peer_id(&target).to_string()), msg.to_string());
+        }
+    }
+
+    Ok(())
+}
+
+fn start_node(start_args: &[String]) -> anyhow::Result<()> {
+    // start_args: ["<port>", ...]
+    let mut config_args = Vec::with_capacity(start_args.len() + 1);
+    config_args.push("core".to_string());
+    config_args.extend_from_slice(start_args);
+
+    // Initialize tracing (only for the long-running start command)
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
+        .try_init();
+
+    let config = Config::from_args(&config_args)?;
+    let node = Node::new(config)?;
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    rt.block_on(async move { node.start().await })?;
     Ok(())
 }
 
