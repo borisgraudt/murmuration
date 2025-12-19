@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Elysium Web - MeshNet Dashboard</title>
+    <title>Elysium Web - Network Visualization</title>
     <link rel="stylesheet" href="assets/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -17,7 +17,7 @@
                     <span class="icon">⚡</span>
                     <span>Elysium Web</span>
                 </h1>
-                <p class="subtitle">Decentralized Mesh Network Dashboard</p>
+                <p class="subtitle">Mesh Network Visualization</p>
             </div>
             <div class="header-status" id="header-status">
                 <span class="status-dot"></span>
@@ -25,66 +25,56 @@
             </div>
         </header>
         
-        <div class="dashboard">
-            <section class="status-panel card">
+        <div class="main-content">
+            <!-- Network Visualization Canvas -->
+            <section class="visualization-panel card">
                 <div class="card-header">
-                    <h2>Node Status</h2>
-                </div>
-                <div class="card-content" id="node-status">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading...</p>
+                    <h2>Network Topology</h2>
+                    <div class="controls">
+                        <button id="reset-view" class="btn-small">Reset View</button>
                     </div>
-                </div>
-            </section>
-            
-            <section class="peers-panel card">
-                <div class="card-header">
-                    <h2>Connected Peers</h2>
-                    <span class="badge" id="peers-count">0</span>
-                </div>
-                <div class="card-content" id="peers-list">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading...</p>
-                    </div>
-                </div>
-            </section>
-            
-            <section class="chat-panel card">
-                <div class="card-header">
-                    <h2>Mesh Chat</h2>
                 </div>
                 <div class="card-content">
-                    <div id="chat-messages" class="chat-messages"></div>
-                    <div class="chat-input">
-                        <input 
-                            type="text" 
-                            id="message-input" 
-                            placeholder="Type a message to broadcast..."
-                            autocomplete="off"
-                        >
-                        <button id="send-button" class="btn-primary">
-                            <span>Send</span>
-                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                <path d="M1.5 1.5L14.5 8L1.5 14.5V9.5L10.5 8L1.5 6.5V1.5Z" fill="currentColor"/>
-                            </svg>
-                        </button>
-                    </div>
+                    <canvas id="network-canvas" width="1200" height="600"></canvas>
                 </div>
             </section>
             
-            <section class="sites-panel card">
-                <div class="card-header">
-                    <h2>Available Sites</h2>
-                </div>
-                <div class="card-content" id="sites-list">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading...</p>
+            <!-- Sidebar with info -->
+            <div class="sidebar">
+                <section class="status-panel card">
+                    <div class="card-header">
+                        <h2>Node Status</h2>
                     </div>
-                </div>
-            </section>
+                    <div class="card-content" id="node-status">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading...</p>
+                        </div>
+                    </div>
+                </section>
+                
+                <section class="peers-panel card">
+                    <div class="card-header">
+                        <h2>Connected Peers</h2>
+                        <span class="badge" id="peers-count">0</span>
+                    </div>
+                    <div class="card-content" id="peers-list">
+                        <div class="loading">
+                            <div class="spinner"></div>
+                            <p>Loading...</p>
+                        </div>
+                    </div>
+                </section>
+                
+                <section class="messages-panel card">
+                    <div class="card-header">
+                        <h2>Message Flow</h2>
+                    </div>
+                    <div class="card-content">
+                        <div id="messages-log" class="messages-log"></div>
+                    </div>
+                </section>
+            </div>
         </div>
     </div>
     
