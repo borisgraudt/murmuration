@@ -73,4 +73,22 @@ Open `http://localhost:8081`.
 
 - Rust CI: `.github/workflows/rust.yml`
 - GitHub Pages deploy: `.github/workflows/pages.yml` (deploys `web/frontend/`)
+- GitHub Packages (GHCR): `.github/workflows/packages.yml` (pushes Docker image to `ghcr.io/<owner>/<repo>`)
+
+### GitHub Packages (GHCR) usage
+
+Pull:
+
+```bash
+docker pull ghcr.io/borisgraudt/elysium:main
+```
+
+Run a node (example P2P port 8080):
+
+```bash
+docker run --rm -it \
+  -p 8080:8080 \
+  -p 9998:9998/udp \
+  ghcr.io/borisgraudt/elysium:main start 8080
+```
 

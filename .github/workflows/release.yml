@@ -1,98 +1,11 @@
-name: Release (GitHub binaries)
+name: Release (deprecated)
 
 on:
-  push:
-    tags:
-      - "v*"
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Build release binaries
-        working-directory: core
-        run: cargo build --release --bin ely --bin core --bin cli --bin viz
-
-      - name: Package (unix)
-        if: runner.os != 'Windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p dist
-          BIN_DIR="target/release"
-          # When building from `core/`, artifacts live in workspace root `target/`.
-          if [ -d "target/release" ]; then
-            BIN_DIR="target/release"
-          elif [ -d "../target/release" ]; then
-            BIN_DIR="../target/release"
-          fi
-          cp "${BIN_DIR}/ely" dist/
-          cp "${BIN_DIR}/core" dist/
-          cp "${BIN_DIR}/cli" dist/
-          cp "${BIN_DIR}/viz" dist/
-          tar -czf "meshlink-${{ runner.os }}.tar.gz" -C dist .
-
-      - name: Package (windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $binDir = "target/release"
-          if (Test-Path "../target/release") { $binDir = "../target/release" }
-          Copy-Item "$binDir/ely.exe" dist/
-          Copy-Item "$binDir/core.exe" dist/
-          Copy-Item "$binDir/cli.exe" dist/
-          Copy-Item "$binDir/viz.exe" dist/
-          Compress-Archive -Path dist/* -DestinationPath "meshlink-${{ runner.os }}.zip" -Force
-
-      - name: Upload artifact (unix)
-        if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: meshlink-${{ runner.os }}
-          path: meshlink-${{ runner.os }}.tar.gz
-
-      - name: Upload artifact (windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
-        with:
-          name: meshlink-${{ runner.os }}
-          path: meshlink-${{ runner.os }}.zip
-
-  release:
-    name: Publish GitHub Release
-    needs: build
+  noop:
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: List artifacts
-        run: ls -R artifacts
-
-      - name: Create release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            artifacts/**/meshlink-*.tar.gz
-            artifacts/**/meshlink-*.zip
+      - run: echo "Deprecated: use .github/workflows/packages.yml (GHCR) instead."
 
