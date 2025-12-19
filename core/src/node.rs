@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::signal;
-use tokio::sync::{mpsc, oneshot, Notify, RwLock};
+use tokio::sync::{mpsc, oneshot, Notify, RwLock, Semaphore};
 use tokio::time::{interval, sleep, timeout};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
@@ -75,6 +75,12 @@ pub struct Node {
 
     /// Discovery port used for UDP broadcast/listen
     discovery_port: u16,
+
+    /// Connection storm protection: limit concurrent connect attempts
+    connect_semaphore: Arc<Semaphore>,
+
+    /// Connection storm protection: per-address cooldown
+    last_connect_attempt: Arc<RwLock<HashMap<SocketAddr, Instant>>>,
 }
 
 impl Node {
@@ -107,6 +113,7 @@ impl Node {
                 .expect("valid api addr")
         });
         let discovery_port = config.discovery_port;
+        let max_connect_in_flight = config.max_connect_in_flight.max(1);
 
         Ok(Self {
             id,
@@ -124,6 +131,8 @@ impl Node {
             pending_manual_pings: Arc::new(RwLock::new(HashMap::new())),
             api_addr: Arc::new(RwLock::new(initial_api_addr)),
             discovery_port,
+            connect_semaphore: Arc::new(Semaphore::new(max_connect_in_flight)),
+            last_connect_attempt: Arc::new(RwLock::new(HashMap::new())),
         })
     }
 
@@ -590,6 +599,14 @@ impl Node {
 
             let peers = self.peer_manager.get_all_peers().await;
             let connected = self.peer_manager.get_connected_peers().await;
+            if connected.len() >= self.config.max_connections {
+                debug!(
+                    "Connector: at max connections ({}/{})",
+                    connected.len(),
+                    self.config.max_connections
+                );
+                continue;
+            }
             let connected_ids: std::collections::HashSet<_> =
                 connected.iter().map(|p| p.node_id.clone()).collect();
 
@@ -600,6 +617,12 @@ impl Node {
             );
 
             for peer in peers {
+                // Hard cap - keep some headroom for inbound, but prevent storms
+                let connected_now = self.peer_manager.get_connected_peers().await;
+                if connected_now.len() >= self.config.max_connections {
+                    break;
+                }
+
                 // Skip if already connected
                 if connected_ids.contains(&peer.node_id) {
                     continue;
@@ -643,6 +666,28 @@ impl Node {
         if peer_id == self.id {
             return;
         }
+
+        // Cooldown by address to avoid reconnect storms (especially with discovery bursts)
+        {
+            let now = Instant::now();
+            let mut map = self.last_connect_attempt.write().await;
+            if let Some(last) = map.get(&addr) {
+                if now.duration_since(*last) < self.config.connect_cooldown {
+                    debug!(
+                        "Skipping connect to {} (cooldown {:?})",
+                        addr, self.config.connect_cooldown
+                    );
+                    return;
+                }
+            }
+            map.insert(addr, now);
+        }
+
+        // Limit concurrent connects
+        let _permit = match self.connect_semaphore.acquire().await {
+            Ok(p) => p,
+            Err(_) => return,
+        };
         // Double-check we're not already connected or connecting
         // Also check by address to catch cases where peer_id might be different
         let all_peers = self.peer_manager.get_all_peers().await;
@@ -1285,6 +1330,8 @@ impl Clone for Node {
             pending_manual_pings: self.pending_manual_pings.clone(),
             api_addr: self.api_addr.clone(),
             discovery_port: self.discovery_port,
+            connect_semaphore: self.connect_semaphore.clone(),
+            last_connect_attempt: self.last_connect_attempt.clone(),
         }
     }
 }
@@ -1334,6 +1381,9 @@ impl Node {
 
             // Try to connect if not already connected
             let connected = self.peer_manager.get_connected_peers().await;
+            if connected.len() >= self.config.max_connections {
+                continue;
+            }
             if !connected.iter().any(|p| p.node_id == node_id) {
                 let node = self.clone();
                 tokio::spawn(async move {

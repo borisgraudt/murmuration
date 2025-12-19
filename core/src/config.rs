@@ -6,6 +6,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 const DEFAULT_DISCOVERY_PORT: u16 = 9998;
+const DEFAULT_CONNECT_COOLDOWN_MS: u64 = 8_000;
+const DEFAULT_MAX_CONNECTIONS: usize = 24;
+const DEFAULT_MAX_CONNECT_IN_FLIGHT: usize = 16;
 
 /// Node configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,6 +51,15 @@ pub struct Config {
 
     /// Enable UDP discovery
     pub enable_discovery: bool,
+
+    /// Maximum number of total connected peers (hard cap)
+    pub max_connections: usize,
+
+    /// Minimum delay between connection attempts to the same address
+    pub connect_cooldown: Duration,
+
+    /// Limit concurrent outbound connect attempts (prevents connection storms)
+    pub max_connect_in_flight: usize,
 }
 
 impl Default for Config {
@@ -66,6 +78,9 @@ impl Default for Config {
             api_addr: None,
             discovery_port: DEFAULT_DISCOVERY_PORT,
             enable_discovery: true,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
+            connect_cooldown: Duration::from_millis(DEFAULT_CONNECT_COOLDOWN_MS),
+            max_connect_in_flight: DEFAULT_MAX_CONNECT_IN_FLIGHT,
         }
     }
 }
@@ -75,7 +90,7 @@ impl Config {
     pub fn from_args(args: &[String]) -> Result<Self> {
         if args.len() < 2 {
             return Err(MeshError::Config(format!(
-                "Usage: {} <port> [peer1] [peer2] ... [--ai-debug] [--data-dir <path>] [--api-port <port>] [--discovery-port <port>] [--no-discovery]",
+                "Usage: {} <port> [peer1] [peer2] ... [--ai-debug] [--data-dir <path>] [--api-port <port>] [--discovery-port <port>] [--no-discovery] [--max-connections <n>] [--connect-cooldown-ms <ms>] [--max-connect-in-flight <n>]",
                 args.first().unwrap_or(&"meshlink".to_string())
             )));
         }
@@ -95,6 +110,9 @@ impl Config {
         let mut api_port: Option<u16> = None;
         let mut discovery_port: Option<u16> = None;
         let mut enable_discovery = true;
+        let mut max_connections: Option<usize> = None;
+        let mut connect_cooldown_ms: Option<u64> = None;
+        let mut max_connect_in_flight: Option<usize> = None;
         
         let mut i = 2;
         while i < args.len() {
@@ -134,6 +152,37 @@ impl Config {
                     enable_discovery = false;
                     i += 1;
                 }
+                "--max-connections" => {
+                    let n = args.get(i + 1).ok_or_else(|| {
+                        MeshError::Config("--max-connections requires a number".to_string())
+                    })?;
+                    max_connections = Some(n.parse::<usize>().map_err(|_| {
+                        MeshError::Config("--max-connections must be a valid number".to_string())
+                    })?);
+                    i += 2;
+                }
+                "--connect-cooldown-ms" => {
+                    let n = args.get(i + 1).ok_or_else(|| {
+                        MeshError::Config("--connect-cooldown-ms requires a number".to_string())
+                    })?;
+                    connect_cooldown_ms = Some(n.parse::<u64>().map_err(|_| {
+                        MeshError::Config(
+                            "--connect-cooldown-ms must be a valid number".to_string(),
+                        )
+                    })?);
+                    i += 2;
+                }
+                "--max-connect-in-flight" => {
+                    let n = args.get(i + 1).ok_or_else(|| {
+                        MeshError::Config("--max-connect-in-flight requires a number".to_string())
+                    })?;
+                    max_connect_in_flight = Some(n.parse::<usize>().map_err(|_| {
+                        MeshError::Config(
+                            "--max-connect-in-flight must be a valid number".to_string(),
+                        )
+                    })?);
+                    i += 2;
+                }
                 other => {
                     known_peers.push(other.to_string());
                     i += 1;
@@ -157,6 +206,24 @@ impl Config {
         if std::env::var("MESHLINK_NO_DISCOVERY").is_ok() {
             enable_discovery = false;
         }
+        if let Some(n) = std::env::var("MESHLINK_MAX_CONNECTIONS")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            max_connections = Some(n);
+        }
+        if let Some(n) = std::env::var("MESHLINK_CONNECT_COOLDOWN_MS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+        {
+            connect_cooldown_ms = Some(n);
+        }
+        if let Some(n) = std::env::var("MESHLINK_MAX_CONNECT_IN_FLIGHT")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+        {
+            max_connect_in_flight = Some(n);
+        }
 
         let api_addr = api_port.map(|p| format!("127.0.0.1:{}", p).parse()).transpose().map_err(
             |_| MeshError::Config("Invalid api address".to_string()),
@@ -170,6 +237,11 @@ impl Config {
             api_addr,
             discovery_port: discovery_port.unwrap_or(DEFAULT_DISCOVERY_PORT),
             enable_discovery,
+            max_connections: max_connections.unwrap_or(DEFAULT_MAX_CONNECTIONS),
+            connect_cooldown: Duration::from_millis(
+                connect_cooldown_ms.unwrap_or(DEFAULT_CONNECT_COOLDOWN_MS),
+            ),
+            max_connect_in_flight: max_connect_in_flight.unwrap_or(DEFAULT_MAX_CONNECT_IN_FLIGHT),
             ..Default::default()
         })
     }
