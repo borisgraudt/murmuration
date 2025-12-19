@@ -25,29 +25,26 @@ Open **two terminals**:
 
 ```bash
 cd core
-MESHLINK_API_PORT=17080 cargo run --bin core --release -- 8080
+cargo run --bin ely --release -- start 8080
 ```
 
 ```bash
 cd core
-MESHLINK_API_PORT=17081 cargo run --bin core --release -- 8081 127.0.0.1:8080
+cargo run --bin ely --release -- start 8081 127.0.0.1:8080
 ```
 
 Then **CLI** (third terminal):
 
 ```bash
-cd python_cli
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-MESHLINK_API_PORT=17080 python3 cli.py -i
+cd core
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- status
 ```
 
 Try:
 - `status`
 - `peers`
 - `broadcast hello`
+- `watch`
 
 Then **web view** (fourth terminal):
 
@@ -66,9 +63,11 @@ Open `http://localhost:8081`.
 
 ### Documentation
 
+- `docs/QUICKSTART.md`
+- `docs/TROUBLESHOOTING.md`
+- `docs/ROADMAP.md`
 - `docs/protocol_spec.md`
 - `docs/architecture.md`
-- `docs/ai_routing.md`
 
 ### CI / Pages
 
