@@ -1,107 +1,77 @@
-# MeshNet: Decentralized Encrypted Communication Protocol
+## meshlink
 
-A fully peer-to-peer, censorship-resistant communication layer designed for autonomy, privacy, and resilience — built with Rust and Python AI integration.
+Decentralized, encrypted P2P mesh node in Rust — with a CLI and a minimalist web topology view.
 
-## 🧠 Vision
+### What you should see at the end
 
-Modern communication relies on centralized servers that can be censored, surveilled, or shut down. MeshNet redefines this paradigm — creating a fully decentralized, encrypted, and intelligent communication protocol where nodes cooperate, route messages autonomously, and survive even under complete internet isolation.
+- **Two+ nodes connect** (RSA handshake, AES-GCM session keys).
+- **`peers` shows real connections** (Connected / Handshaking / Disconnected).
+- **Sending a message** works (direct or broadcast).
+- **Web topology page** shows nodes + edges, and animates message flow when we wire events (today it polls peers/status).
 
-## ⚙️ Architecture
+### Repo layout
 
+```text
+core/         Rust node + binaries (core, cli, viz, ely)
+python_cli/   Python CLI (Claude Code-ish terminal UI)
+web/frontend/ Static web topology (GitHub Pages-ready)
+docs/         Protocol + architecture notes
+scripts/      Local run helpers
 ```
-meshnet_20_10/
-├── core/              # Rust P2P protocol with AI routing
-├── python_cli/        # CLI for testing
-├── web/               # Elysium Web (backend + frontend)
-├── sites/             # Decentralized mesh sites
-├── tests/             # Unit & integration tests
-├── scripts/           # Helper scripts
-└── docs/              # Documentation
-```
 
-## 🚀 Quick Start
+### Quick demo (local)
 
-### 1. Build Rust Core
+Open **two terminals**:
 
 ```bash
 cd core
-cargo build --release
+MESHLINK_API_PORT=17080 cargo run --bin core --release -- 8080
 ```
 
-### 2. Run a Node
-
 ```bash
-# Terminal 1: Node 1
-cargo run --bin core 8080
-
-# Terminal 2: Node 2
-cargo run --bin core 8081 '127.0.0.1:8080'
-
-# Terminal 3: Visualization
-cargo run --bin viz
+cd core
+MESHLINK_API_PORT=17081 cargo run --bin core --release -- 8081 127.0.0.1:8080
 ```
 
-### 3. Use CLI
+Then **CLI** (third terminal):
 
 ```bash
-# Rust CLI
-cargo run --bin cli -- status
-cargo run --bin cli -- broadcast "Hello MeshNet!"
-
-# Python CLI
 cd python_cli
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-python cli.py status
-python cli.py broadcast "Hello from Python!"
+
+MESHLINK_API_PORT=17080 python3 cli.py -i
 ```
 
-### 4. Run Web Interface
+Try:
+- `status`
+- `peers`
+- `broadcast hello`
+
+Then **web view** (fourth terminal):
 
 ```bash
-# Backend
-cd web/backend
-pip install fastapi uvicorn
-python app.py
-
-# Open browser
-open http://localhost:8000
+cd web/frontend
+python3 -m http.server 8081
 ```
 
-## 🔒 Features
+Open `http://localhost:8081`.
 
-- **P2P Networking**: Fully decentralized, no central servers
-- **Encryption**: RSA key exchange + AES-GCM session encryption
-- **AI Routing**: Intelligent message routing based on latency, uptime, and trust
-- **Peer Discovery**: Automatic LAN/Wi-Fi peer discovery
-- **Mesh Sites**: Decentralized websites hosted on the network
-- **Web Dashboard**: Real-time network visualization and chat
+### Notes (frugal but important)
 
-## 📚 Documentation
+- **API port formula**: `MESHLINK_API_PORT = 9000 + P2P_PORT` (e.g. 8080 → 17080).
+- If you see `Address already in use`, stop old nodes: `killall core` (macOS/Linux).
+- If peers don’t connect, see `docs/TROUBLESHOOTING.md`.
 
-See `docs/` directory for:
-- `architecture.md` - System architecture
-- `protocol_spec.md` - Protocol specification
-- `ai_routing.md` - AI routing algorithm
-- `web_spec.md` - Elysium Web specification
-- `roadmap.md` - Development roadmap
+### Documentation
 
-## 🧪 Testing
+- `docs/protocol_spec.md`
+- `docs/architecture.md`
+- `docs/ai_routing.md`
 
-```bash
-# Run Rust tests
-cd core
-cargo test
+### CI / Pages
 
-# Run Python CLI tests
-cd python_cli
-python -m pytest tests/
-```
-
-## 📝 License
-
-MIT License © 2025
-
-## 🤝 Contributing
-
-This is a research project. Contributions welcome!
+- Rust CI: `.github/workflows/rust.yml`
+- GitHub Pages deploy: `.github/workflows/pages.yml` (deploys `web/frontend/`)
 

@@ -1,12 +1,15 @@
 /// Peer discovery via UDP broadcast/multicast
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
-use std::net::SocketAddr;
+use socket2::{Domain, Protocol, Socket, Type};
+use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep};
 use tracing::{debug, info, warn};
+
+const DISCOVERY_MULTICAST: Ipv4Addr = Ipv4Addr::new(239, 255, 0, 1);
 
 /// Discovery message sent via UDP
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,18 +100,15 @@ impl DiscoveryManager {
             };
 
             if let Ok(json) = serde_json::to_string(&message) {
-                // Broadcast to local network
+                // Multicast to local network (works across different listen ports; supports local multi-node)
                 if let Ok(socket) = TokioUdpSocket::bind("0.0.0.0:0").await {
-                    let broadcast_addr = format!("255.255.255.255:{}", discovery_port);
-                    if let Ok(addr) = broadcast_addr.parse::<SocketAddr>() {
-                        // Enable broadcast
-                        if let Ok(socket) = socket.into_std() {
-                            if socket.set_broadcast(true).is_ok() {
-                                let socket = TokioUdpSocket::from_std(socket).unwrap();
-                                let _ = socket.send_to(json.as_bytes(), addr).await;
-                                debug!("Broadcasted discovery message");
-                            }
-                        }
+                    if let Ok(socket) = socket.into_std() {
+                        let _ = socket.set_multicast_ttl_v4(1);
+                        let _ = socket.set_multicast_loop_v4(true);
+                        let socket = TokioUdpSocket::from_std(socket).unwrap();
+                        let addr = SocketAddr::new(DISCOVERY_MULTICAST.into(), discovery_port);
+                        let _ = socket.send_to(json.as_bytes(), addr).await;
+                        debug!("Multicasted discovery message");
                     }
                 }
             }
@@ -121,8 +121,12 @@ impl DiscoveryManager {
         discovered_peers: mpsc::UnboundedSender<(String, SocketAddr, String)>,
         discovery_port: u16,
     ) {
-        let bind_addr = format!("0.0.0.0:{}", discovery_port);
-        let socket = match TokioUdpSocket::bind(&bind_addr).await {
+        let bind_addr: SocketAddr = format!("0.0.0.0:{}", discovery_port)
+            .parse()
+            .expect("valid discovery bind addr");
+
+        // Use SO_REUSEADDR and multicast so multiple local nodes can listen on the same port.
+        let socket = match bind_udp_reuse(bind_addr) {
             Ok(s) => {
                 info!("Discovery listener started on {}", bind_addr);
                 s
@@ -182,4 +186,16 @@ impl DiscoveryManager {
             }
         }
     }
+}
+
+fn bind_udp_reuse(addr: SocketAddr) -> std::io::Result<TokioUdpSocket> {
+    let socket = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP))?;
+    socket.set_reuse_address(true)?;
+    socket.bind(&addr.into())?;
+
+    let std_sock: std::net::UdpSocket = socket.into();
+    // Join multicast group for discovery (receive LAN announcements)
+    let _ = std_sock.join_multicast_v4(&DISCOVERY_MULTICAST, &Ipv4Addr::UNSPECIFIED);
+    std_sock.set_nonblocking(true)?;
+    TokioUdpSocket::from_std(std_sock)
 }

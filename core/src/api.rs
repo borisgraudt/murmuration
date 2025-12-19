@@ -3,6 +3,7 @@ use crate::error::{MeshError, Result};
 use crate::node::Node;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
@@ -22,6 +23,28 @@ enum ApiRequest {
     Peers,
     #[serde(rename = "status")]
     Status,
+    #[serde(rename = "ping")]
+    Ping {
+        peer_id: String,
+        #[serde(default)]
+        timeout_ms: Option<u64>,
+    },
+    #[serde(rename = "inbox")]
+    Inbox {
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
+    #[serde(rename = "watch")]
+    Watch {
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default)]
+        timeout_ms: Option<u64>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
 }
 
 /// API response
@@ -55,6 +78,12 @@ impl ApiResponse {
 /// Start API server for CLI
 pub async fn start_api_server(node: Node, api_addr: SocketAddr) -> Result<()> {
     let listener = TcpListener::bind(&api_addr).await.map_err(MeshError::Io)?;
+    start_api_server_with_listener(node, listener).await
+}
+
+/// Start API server using an already-bound listener (lets caller choose port / use ephemeral)
+pub async fn start_api_server_with_listener(node: Node, listener: TcpListener) -> Result<()> {
+    let api_addr = listener.local_addr().map_err(MeshError::Io)?;
 
     info!("API server listening on {}", api_addr);
 
@@ -162,10 +191,46 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
         }
         ApiRequest::Status => {
             let (node_id, connected, total) = node.get_status().await;
+            let api_addr = node.get_api_addr().await;
             Ok(ApiResponse::success(serde_json::json!({
                 "node_id": node_id,
                 "connected_peers": connected,
-                "total_peers": total
+                "total_peers": total,
+                "api_port": api_addr.port()
+            })))
+        }
+        ApiRequest::Ping {
+            peer_id,
+            timeout_ms,
+        } => {
+            let timeout = Duration::from_millis(timeout_ms.unwrap_or(1500));
+            match node.ping_peer(&peer_id, timeout).await {
+                Ok(latency) => Ok(ApiResponse::success(serde_json::json!({
+                    "peer_id": peer_id,
+                    "latency_ms": latency.as_secs_f64() * 1000.0
+                }))),
+                Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+            }
+        }
+        ApiRequest::Inbox { since, limit } => {
+            let limit = limit.unwrap_or(50).clamp(1, 500);
+            let (next_since, messages) = node.list_inbox(since, limit).await;
+            Ok(ApiResponse::success(serde_json::json!({
+                "next_since": next_since,
+                "messages": messages
+            })))
+        }
+        ApiRequest::Watch {
+            since,
+            timeout_ms,
+            limit,
+        } => {
+            let limit = limit.unwrap_or(50).clamp(1, 500);
+            let timeout = Duration::from_millis(timeout_ms.unwrap_or(20_000).min(60_000));
+            let (next_since, messages) = node.watch_inbox(since.unwrap_or(0), timeout, limit).await;
+            Ok(ApiResponse::success(serde_json::json!({
+                "next_since": next_since,
+                "messages": messages
             })))
         }
     }

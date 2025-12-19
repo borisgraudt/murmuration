@@ -1,5 +1,6 @@
 # Rust
 /target/
+**/target/
 **/*.rs.bk
 *.pdb
 Cargo.lock
@@ -17,4 +18,21 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
+**/logs/
+*.jsonl
+
+# Python
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+python_cli/venv/
+python_cli/.venv/
+
+# Local node identity / keys (generated during tests/runs)
+.ely/
+core/.ely/
 

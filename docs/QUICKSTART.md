@@ -84,9 +84,9 @@ cargo run --bin viz
 CLI автоматически найдет API порт, или укажите его вручную:
 
 ```bash
-# API порт = 9000 + node_port
-# Для ноды на 8082 → API на 9082
-# Для ноды на 8083 → API на 9083
+# API порт = 9000 + P2P порт
+# Для ноды на 8082 → API на 17082
+# Для ноды на 8083 → API на 17083
 ```
 
 ### Основные команды
@@ -140,10 +140,10 @@ cargo run --bin cli -- broadcast "Hello everyone!"
 
 ```bash
 # Для ноды на 8082
-MESHLINK_API_PORT=9082 cargo run --bin cli -- status
+MESHLINK_API_PORT=17082 cargo run --bin cli -- status
 
 # Для ноды на 8083
-MESHLINK_API_PORT=9083 cargo run --bin cli -- status
+MESHLINK_API_PORT=17083 cargo run --bin cli -- status
 ```
 
 ### Пример полного workflow с CLI
