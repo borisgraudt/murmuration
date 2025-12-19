@@ -119,7 +119,7 @@ impl Config {
         let mut connect_cooldown_ms: Option<u64> = None;
         let mut max_connect_in_flight: Option<usize> = None;
         let mut connect_backoff_max_ms: Option<u64> = None;
-        
+
         let mut i = 2;
         while i < args.len() {
             match args[i].as_str() {
@@ -248,9 +248,10 @@ impl Config {
             connect_backoff_max_ms = Some(n);
         }
 
-        let api_addr = api_port.map(|p| format!("127.0.0.1:{}", p).parse()).transpose().map_err(
-            |_| MeshError::Config("Invalid api address".to_string()),
-        )?;
+        let api_addr = api_port
+            .map(|p| format!("127.0.0.1:{}", p).parse())
+            .transpose()
+            .map_err(|_| MeshError::Config("Invalid api address".to_string()))?;
 
         Ok(Self {
             listen_addr,

@@ -64,13 +64,8 @@ pub fn record_peer(data_dir: &Path, addr: SocketAddr) -> Result<()> {
         peers = peers.split_off(peers.len() - MAX_PEERS);
     }
 
-    let file = PeersFileV1 {
-        version: 1,
-        peers,
-    };
+    let file = PeersFileV1 { version: 1, peers };
     let json = serde_json::to_string_pretty(&file).map_err(MeshError::Serialization)?;
     fs::write(&path, json).map_err(MeshError::Io)?;
     Ok(())
 }
-
-

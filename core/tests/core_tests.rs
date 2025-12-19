@@ -356,7 +356,9 @@ async fn test_ai_routing_peer_selection() {
 
     // Get best forward peers (top 2)
     let peer_infos = vec![peer1.clone(), peer2.clone(), peer3.clone()];
-    let best_peers = router.get_best_forward_peers(&message, &peer_infos, 2).await;
+    let best_peers = router
+        .get_best_forward_peers(&message, &peer_infos, 2)
+        .await;
 
     // peer1 should be selected (best latency + reliability)
     assert!(
@@ -531,8 +533,8 @@ async fn test_ai_routing_message_forwarding() {
 async fn test_cli_ping_peer_roundtrip() {
     use meshlink_core::{Config, Node};
     use std::sync::Arc;
-    use tokio::time::sleep;
     use std::time::{Duration, Instant};
+    use tokio::time::sleep;
 
     let config1 = Config {
         listen_addr: "127.0.0.1:19101".parse().unwrap(),

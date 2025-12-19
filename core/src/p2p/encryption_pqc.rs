@@ -19,15 +19,15 @@ impl PqcEncryptionManager {
         {
             use pqcrypto_kyber::kyber768::*;
             use pqcrypto_traits::kem::{PublicKey as PqcPublicKey, SecretKey as PqcSecretKey};
-            
+
             let (public_key, secret_key) = keypair();
-            
+
             Ok(Self {
                 public_key: public_key.as_bytes().to_vec(),
                 secret_key: secret_key.as_bytes().to_vec(),
             })
         }
-        
+
         #[cfg(not(feature = "pqc"))]
         {
             // Fallback: return empty keys if PQC not enabled
@@ -58,18 +58,18 @@ impl PqcEncryptionManager {
             use pqcrypto_traits::kem::{
                 Ciphertext as PqcCiphertext, PublicKey as PqcPublicKey, SharedSecret,
             };
-            
+
             let pk = <PublicKey as PqcPublicKey>::from_bytes(_peer_public_key)
                 .map_err(|_| MeshError::Peer("Invalid Kyber768 public key".to_string()))?;
-            
+
             let (shared_secret, ciphertext) = encapsulate(&pk);
-            
+
             Ok((
                 shared_secret.as_bytes().to_vec(),
                 ciphertext.as_bytes().to_vec(),
             ))
         }
-        
+
         #[cfg(not(feature = "pqc"))]
         {
             Err(MeshError::Peer(
@@ -86,18 +86,18 @@ impl PqcEncryptionManager {
             use pqcrypto_traits::kem::{
                 Ciphertext as PqcCiphertext, SecretKey as PqcSecretKey, SharedSecret,
             };
-            
+
             let ct = <Ciphertext as PqcCiphertext>::from_bytes(_ciphertext)
                 .map_err(|_| MeshError::Peer("Invalid Kyber768 ciphertext".to_string()))?;
-            
+
             let sk = <SecretKey as PqcSecretKey>::from_bytes(&self.secret_key)
                 .map_err(|_| MeshError::Peer("Invalid Kyber768 secret key".to_string()))?;
-            
+
             let shared_secret = decapsulate(&ct, &sk);
-            
+
             Ok(shared_secret.as_bytes().to_vec())
         }
-        
+
         #[cfg(not(feature = "pqc"))]
         {
             Err(MeshError::Peer(
@@ -125,7 +125,7 @@ pub fn is_pqc_available() -> bool {
     {
         true
     }
-    
+
     #[cfg(not(feature = "pqc"))]
     {
         false

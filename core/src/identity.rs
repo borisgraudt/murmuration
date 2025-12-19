@@ -84,5 +84,3 @@ pub fn load_or_create(data_dir: &Path) -> Result<NodeIdentity> {
         data_dir,
     })
 }
-
-

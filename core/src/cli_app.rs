@@ -21,7 +21,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     match command.as_str() {
         "send" => {
             if args.len() < 4 {
-                eprintln!("{}", format!("Usage: {} send <peer_id> <message>", bin).yellow());
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} send <peer_id> <message>", bin).yellow()
+                );
                 return Ok(());
             }
             let peer_id = Some(normalize_peer_id(&args[2]).to_string());
@@ -38,7 +41,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         }
         "ping" => {
             if args.len() < 3 {
-                eprintln!("{}", format!("Usage: {} ping <peer_id> [timeout_ms]", bin).yellow());
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} ping <peer_id> [timeout_ms]", bin).yellow()
+                );
                 return Ok(());
             }
             let peer_id = normalize_peer_id(&args[2]).to_string();
@@ -86,8 +92,14 @@ fn print_usage(bin: &str) {
         "  {} <peer_id> [timeout_ms] Ping a peer and print RTT",
         "ping".cyan()
     );
-    println!("  {}                        List all known peers", "peers".cyan());
-    println!("  {}                        Show node status", "status".cyan());
+    println!(
+        "  {}                        List all known peers",
+        "peers".cyan()
+    );
+    println!(
+        "  {}                        Show node status",
+        "status".cyan()
+    );
 }
 
 fn get_api_port() -> u16 {
@@ -317,5 +329,3 @@ fn show_status() -> anyhow::Result<()> {
 
     Ok(())
 }
-
-

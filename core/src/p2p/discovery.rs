@@ -1,13 +1,13 @@
 /// Peer discovery via UDP broadcast/multicast
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
+use socket2::{Domain, Protocol, Socket, Type};
 use std::net::{Ipv4Addr, SocketAddr};
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep};
 use tracing::{debug, info, warn};
-use socket2::{Domain, Protocol, Socket, Type};
 
 const DISCOVERY_MULTICAST: Ipv4Addr = Ipv4Addr::new(239, 255, 0, 1);
 

@@ -55,5 +55,3 @@ mod tests {
         assert_eq!(decoded.payload, b"hello".to_vec());
     }
 }
-
-
