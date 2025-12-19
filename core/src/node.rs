@@ -616,38 +616,44 @@ impl Node {
                 connected.len()
             );
 
-            for peer in peers {
-                // Hard cap - keep some headroom for inbound, but prevent storms
-                let connected_now = self.peer_manager.get_connected_peers().await;
-                if connected_now.len() >= self.config.max_connections {
-                    break;
-                }
+            let slots = self
+                .config
+                .max_connections
+                .saturating_sub(connected.len())
+                .max(1);
+            let permits = self.connect_semaphore.available_permits().max(1);
+            let budget = slots.min(permits);
 
-                // Skip if already connected
-                if connected_ids.contains(&peer.node_id) {
-                    continue;
-                }
+            // Rank candidates: fewer attempts, newer peers, lower latency if known
+            let mut candidates: Vec<_> = peers
+                .into_iter()
+                .filter(|peer| {
+                    !connected_ids.contains(&peer.node_id)
+                        && peer.state != ConnectionState::Connecting
+                        && peer.state != ConnectionState::Handshaking
+                        && peer.connection_attempts < self.config.max_connection_attempts
+                        && peer.node_id != self.id
+                        && !(peer.address.ip().is_loopback()
+                            && peer.address.port() == self.config.listen_addr.port())
+                })
+                .collect();
 
-                // Skip if already connecting or handshaking
-                if peer.state == ConnectionState::Connecting
-                    || peer.state == ConnectionState::Handshaking
-                {
-                    continue;
+            candidates.sort_by(|a, b| {
+                let c1 = a.connection_attempts.cmp(&b.connection_attempts);
+                if c1 != std::cmp::Ordering::Equal {
+                    return c1;
                 }
-
-                // Skip if trying to connect to ourselves (by ID or obvious loopback/port match)
-                if peer.node_id == self.id
-                    || (peer.address.ip().is_loopback()
-                        && peer.address.port() == self.config.listen_addr.port())
-                {
-                    continue;
+                let c2 = b.added_at.cmp(&a.added_at);
+                if c2 != std::cmp::Ordering::Equal {
+                    return c2;
                 }
+                a.metrics
+                    .latency
+                    .unwrap_or(Duration::from_secs(9999))
+                    .cmp(&b.metrics.latency.unwrap_or(Duration::from_secs(9999)))
+            });
 
-                // Skip if too many attempts
-                if peer.connection_attempts >= self.config.max_connection_attempts {
-                    continue;
-                }
-
+            for peer in candidates.into_iter().take(budget) {
                 let node = self.clone();
                 let peer_addr = peer.address;
                 let peer_id = peer.node_id.clone();
@@ -667,15 +673,32 @@ impl Node {
             return;
         }
 
+        // Exponential backoff based on attempts (cap at connect_backoff_max)
+        let attempts = self
+            .peer_manager
+            .get_peer(&peer_id)
+            .await
+            .map(|p| p.connection_attempts)
+            .unwrap_or(0);
+        let exp = attempts.min(6); // 2^6 = 64x
+        let factor: u32 = 1u32
+            .checked_shl(exp)
+            .unwrap_or(u32::MAX);
+        let backoff = self
+            .config
+            .connect_cooldown
+            .saturating_mul(factor);
+        let backoff = backoff.min(self.config.connect_backoff_max);
+
         // Cooldown by address to avoid reconnect storms (especially with discovery bursts)
         {
             let now = Instant::now();
             let mut map = self.last_connect_attempt.write().await;
             if let Some(last) = map.get(&addr) {
-                if now.duration_since(*last) < self.config.connect_cooldown {
+                if now.duration_since(*last) < backoff {
                     debug!(
-                        "Skipping connect to {} (cooldown {:?})",
-                        addr, self.config.connect_cooldown
+                        "Skipping connect to {} (backoff {:?}, attempts {})",
+                        addr, backoff, attempts
                     );
                     return;
                 }
