@@ -2,6 +2,7 @@ pub mod ai;
 pub mod api;
 pub mod cli_app;
 pub mod config;
+pub mod content_store;
 pub mod elysium;
 /// MeshNet - Decentralized P2P Network Protocol
 ///

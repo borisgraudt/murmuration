@@ -34,3 +34,4 @@ MESHLINK_API_PORT=17081 python3 python_cli/cli.py peers 2>&1 | grep -E "(Connect
 echo ""
 echo "✅ Connection test complete"
 
+

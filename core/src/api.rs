@@ -1,6 +1,7 @@
 /// API server for CLI and external clients
 use crate::error::{MeshError, Result};
 use crate::node::Node;
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -44,6 +45,17 @@ enum ApiRequest {
         timeout_ms: Option<u64>,
         #[serde(default)]
         limit: Option<usize>,
+    },
+    #[serde(rename = "publish")]
+    Publish {
+        path: String,
+        content: Vec<u8>, // Base64 encoded in JSON
+    },
+    #[serde(rename = "fetch")]
+    Fetch {
+        url: String,
+        #[serde(default)]
+        timeout_ms: Option<u64>,
     },
 }
 
@@ -232,6 +244,32 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 "next_since": next_since,
                 "messages": messages
             })))
+        }
+        ApiRequest::Publish { path, content } => {
+            match node.publish_content(&path, content).await {
+                Ok(url) => Ok(ApiResponse::success(serde_json::json!({
+                    "url": url,
+                    "path": path
+                }))),
+                Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+            }
+        }
+        ApiRequest::Fetch { url, timeout_ms } => {
+            let timeout = Duration::from_millis(timeout_ms.unwrap_or(5000).min(30_000));
+            match node.fetch_content(&url, timeout).await {
+                Ok(Some(content)) => {
+                    // Try to decode as UTF-8 string, otherwise return base64
+                    let content_str = String::from_utf8(content.clone())
+                        .unwrap_or_else(|_| base64::engine::general_purpose::STANDARD.encode(&content));
+                    Ok(ApiResponse::success(serde_json::json!({
+                        "url": url,
+                        "content": content_str,
+                        "size_bytes": content.len()
+                    })))
+                }
+                Ok(None) => Ok(ApiResponse::error("Content not found".to_string())),
+                Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+            }
         }
     }
 }

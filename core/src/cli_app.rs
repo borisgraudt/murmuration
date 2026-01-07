@@ -92,6 +92,26 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         "watch" => {
             watch()?;
         }
+        "publish" => {
+            if args.len() < 4 {
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} publish <path> <content|@file>", bin).yellow()
+                );
+                return Ok(());
+            }
+            let path = args[2].clone();
+            let content_arg = args[3..].join(" ");
+            publish(path, content_arg)?;
+        }
+        "fetch" => {
+            if args.len() < 3 {
+                eprintln!("{}", format!("Usage: {} fetch <ely://node_id/path>", bin).yellow());
+                return Ok(());
+            }
+            let url = args[2].clone();
+            fetch(url)?;
+        }
         _ => {
             eprintln!("{} Unknown command: {}", "✗".red().bold(), command.red());
             print_usage(&bin);
@@ -147,6 +167,14 @@ fn print_usage(bin: &str) {
     println!(
         "  {}                        Live stream messages (Ctrl+C to exit)",
         "watch".cyan()
+    );
+    println!(
+        "  {} <path> <content>         Publish content to mesh (use @file to read from file)",
+        "publish".cyan()
+    );
+    println!(
+        "  {} <url>                     Fetch content from mesh (ely://node_id/path)",
+        "fetch".cyan()
     );
 }
 
@@ -533,6 +561,100 @@ fn show_status() -> anyhow::Result<()> {
                 "{}",
                 "╰───────────────────────────────────────────────────────────────╯".bright_cyan()
             );
+        }
+    } else {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        eprintln!("{} Error: {}", "✗".red().bold(), error.red());
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn publish(path: String, content_arg: String) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+
+    // Read content from file if starts with @
+    let content = if content_arg.starts_with('@') {
+        let file_path = &content_arg[1..];
+        std::fs::read(file_path)?
+    } else {
+        content_arg.into_bytes()
+    };
+
+    println!(
+        "{} Publishing {} bytes to path: {}",
+        "⤴".cyan().bold(),
+        content.len(),
+        path.yellow()
+    );
+
+    let request = serde_json::json!({
+        "command": "publish",
+        "path": path,
+        "content": content
+    });
+
+    writeln!(stream, "{}", request)?;
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+
+    if resp["success"].as_bool().unwrap_or(false) {
+        if let Some(data) = resp["data"].as_object() {
+            if let Some(url) = data["url"].as_str() {
+                println!("{} Content published at: {}", "✓".green().bold(), url.green());
+            }
+        }
+    } else {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        eprintln!("{} Error: {}", "✗".red().bold(), error.red());
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn fetch(url: String) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+
+    println!("{} Fetching: {}", "⤵".cyan().bold(), url.yellow());
+
+    let request = serde_json::json!({
+        "command": "fetch",
+        "url": url,
+        "timeout_ms": 5000
+    });
+
+    writeln!(stream, "{}", request)?;
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+
+    if resp["success"].as_bool().unwrap_or(false) {
+        if let Some(data) = resp["data"].as_object() {
+            if let Some(content) = data["content"].as_str() {
+                if let Some(size) = data["size_bytes"].as_u64() {
+                    println!(
+                        "{} Content retrieved ({} bytes):",
+                        "✓".green().bold(),
+                        size
+                    );
+                    println!("{}", content);
+                }
+            }
         }
     } else {
         let error = resp["error"].as_str().unwrap_or("Unknown error");

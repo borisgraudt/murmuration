@@ -65,6 +65,26 @@ pub enum Message {
         ttl: u8,           // Time to live (hop count)
         path: Vec<String>, // Route path for loop detection
     },
+
+    /// Content request (for fetching mesh sites)
+    #[serde(rename = "content_request")]
+    ContentRequest {
+        request_id: String,     // Unique ID for matching request/response
+        url: String,            // ely://<node_id>/<path>
+        from_node: String,      // Requester node ID
+        ttl: u8,                // Hops remaining
+        path: Vec<String>,      // Route path for loop detection
+    },
+
+    /// Content response
+    #[serde(rename = "content_response")]
+    ContentResponse {
+        request_id: String,     // Matches ContentRequest.request_id
+        url: String,            // The requested URL
+        content: Option<Vec<u8>>, // Content if found, None if not found
+        found: bool,            // Whether content was found
+        from_node: String,      // Node that responded (owner of content)
+    },
 }
 
 impl Message {
@@ -90,6 +110,8 @@ impl Message {
             Message::PeerResponse { .. } => "peer_response",
             Message::Close { .. } => "close",
             Message::MeshMessage { .. } => "mesh_message",
+            Message::ContentRequest { .. } => "content_request",
+            Message::ContentResponse { .. } => "content_response",
         }
     }
 }

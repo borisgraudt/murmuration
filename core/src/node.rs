@@ -4,6 +4,7 @@ use crate::ai::routing_logger::{
 };
 /// Main node implementation
 use crate::config::Config;
+use crate::content_store::ContentStore;
 use crate::elysium::packet::ElysiumPacket;
 use crate::error::{MeshError, Result};
 use crate::identity;
@@ -73,6 +74,9 @@ pub struct Node {
     /// Routing logger for AI training data
     routing_logger: RoutingLogger,
 
+    /// Content store for mesh sites
+    content_store: ContentStore,
+
     /// Shutdown signal
     shutdown: Arc<RwLock<bool>>,
     /// Programmatic shutdown notifier (used by tests and embedding)
@@ -86,6 +90,9 @@ pub struct Node {
 
     /// Manual ping waiters (peer_id -> (sent_at, responder))
     pending_manual_pings: Arc<RwLock<HashMap<String, (Instant, oneshot::Sender<Duration>)>>>,
+
+    /// Heartbeat missed pongs counter (peer_id -> consecutive missed count)
+    missed_pongs: Arc<RwLock<HashMap<String, u32>>>,
 
     /// Actual API address (may differ from default if port was taken and we had to fall back)
     api_addr: Arc<RwLock<SocketAddr>>,
@@ -122,6 +129,7 @@ impl Node {
         let session_keys = SessionKeyManager::new();
         let router = Router::new(id.clone());
         let routing_logger = RoutingLogger::new();
+        let content_store = ContentStore::new(&data_dir)?;
 
         info!("Created new node with ID: {}", id);
 
@@ -143,11 +151,13 @@ impl Node {
             session_keys,
             router,
             routing_logger,
+            content_store,
             shutdown: Arc::new(RwLock::new(false)),
             shutdown_notify: Arc::new(Notify::new()),
             message_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_pings: Arc::new(RwLock::new(HashMap::new())),
             pending_manual_pings: Arc::new(RwLock::new(HashMap::new())),
+            missed_pongs: Arc::new(RwLock::new(HashMap::new())),
             api_addr: Arc::new(RwLock::new(initial_api_addr)),
             discovery_port,
             connect_semaphore: Arc::new(Semaphore::new(max_connect_in_flight)),
@@ -445,6 +455,87 @@ impl Node {
             .await
             .get(&channel_peer_id)
             .map(|ch| ch.tx.clone())
+    }
+
+    /// Publish content to local content store
+    /// Path format: ely://<node_id>/<path> or just <path> (node_id is prepended)
+    pub async fn publish_content(&self, path: &str, content: Vec<u8>) -> Result<String> {
+        // Normalize path: ensure it starts with ely://<our_node_id>/
+        let full_path = if path.starts_with("ely://") {
+            path.to_string()
+        } else {
+            let clean_path = path.trim_start_matches('/');
+            format!("ely://{}/{}", self.id, clean_path)
+        };
+
+        info!("Publishing content: {} ({} bytes)", full_path, content.len());
+        self.content_store.put(&full_path, content)?;
+        
+        Ok(full_path)
+    }
+
+    /// Fetch content from mesh (local or remote)
+    /// If URL is local (our node_id), fetch from local store
+    /// Otherwise, send ContentRequest to network and wait for response
+    pub async fn fetch_content(&self, url: &str, timeout_dur: Duration) -> Result<Option<Vec<u8>>> {
+        // Parse URL: ely://<node_id>/<path>
+        if !url.starts_with("ely://") {
+            return Err(MeshError::Protocol(format!("Invalid content URL: {}", url)));
+        }
+
+        let url_parts: Vec<&str> = url.trim_start_matches("ely://").splitn(2, '/').collect();
+        if url_parts.len() < 2 {
+            return Err(MeshError::Protocol(format!("Invalid content URL format: {}", url)));
+        }
+
+        let target_node_id = url_parts[0];
+        
+        // Local fetch (fast path)
+        if target_node_id == self.id {
+            debug!("Fetching local content: {}", url);
+            return self.content_store.get(url);
+        }
+
+        // Remote fetch: send ContentRequest and wait for response
+        info!("Fetching remote content: {} from node {}", url, target_node_id);
+        
+        let request_id = Uuid::new_v4().to_string();
+        let request = Message::ContentRequest {
+            request_id: request_id.clone(),
+            url: url.to_string(),
+            from_node: self.id.clone(),
+            ttl: 8, // Max 8 hops
+            path: vec![self.id.clone()],
+        };
+
+        // Create response channel
+        let (tx, rx) = oneshot::channel::<Vec<u8>>();
+        
+        // Store pending request (TODO: add pending_content_requests HashMap to Node)
+        // For now, we'll send the request and implement response handling later
+        
+        // Send request via mesh routing (broadcast or directed if we know a route to target)
+        let request_bytes = request.to_bytes().map_err(MeshError::Serialization)?;
+        let data_msg = Message::Data {
+            payload: request_bytes,
+            message_id: request_id.clone(),
+        };
+        
+        // Broadcast to all connected peers (routing will handle forwarding)
+        let senders = self.message_senders.read().await;
+        for (peer_id, ch) in senders.iter() {
+            if let Err(e) = ch.tx.send(data_msg.clone()) {
+                warn!("Failed to send content request to {}: {}", peer_id, e);
+            }
+        }
+        drop(senders);
+        
+        // Wait for response (with timeout)
+        // TODO: Implement response matching and channel
+        // For MVP, return error saying remote fetch not fully implemented yet
+        Err(MeshError::Protocol(
+            "Remote content fetch not fully implemented yet (request sent)".to_string()
+        ))
     }
 
     /// Wait for shutdown signal (Ctrl+C)
@@ -1014,6 +1105,27 @@ impl Node {
                     {
                         continue;
                     }
+
+                    // Check missed pongs before sending new ping
+                    let missed = {
+                        let mut missed_map = self.missed_pongs.write().await;
+                        let count = missed_map.entry(peer_id.clone()).or_insert(0);
+                        *count += 1;
+                        *count
+                    };
+
+                    // If 3+ pongs missed, disconnect peer
+                    if missed >= 3 {
+                        warn!(
+                            "Heartbeat: {} missed {} pongs, disconnecting",
+                            peer_id, missed
+                        );
+                        // Clean up and break to disconnect
+                        self.missed_pongs.write().await.remove(&peer_id);
+                        self.pending_pings.write().await.remove(&peer_id);
+                        break;
+                    }
+
                     // Timeout - send ping and record timestamp for latency measurement
                     let ping_timestamp = Instant::now();
                     {
@@ -1091,6 +1203,13 @@ impl Node {
                 }
                 Message::Pong { timestamp: _ } => {
                     debug!("Received pong from {}", peer_id);
+                    
+                    // Reset missed pongs counter (heartbeat is alive)
+                    {
+                        let mut missed = self.missed_pongs.write().await;
+                        missed.remove(&peer_id);
+                    }
+
                     // Prefer completing a manual ping if one is pending
                     let manual = {
                         let mut pending = self.pending_manual_pings.write().await;
@@ -1116,6 +1235,104 @@ impl Node {
                         // Pong received but no pending ping (might be from another connection)
                         debug!("Received pong from {} but no pending ping found", peer_id);
                     }
+                }
+                Message::ContentRequest {
+                    request_id,
+                    url,
+                    from_node,
+                    ttl,
+                    path,
+                } => {
+                    debug!("Received content request: {} for {} from {}", request_id, url, from_node);
+                    
+                    // Check if this request is for us
+                    if url.starts_with(&format!("ely://{}/", self.id)) {
+                        // We are the content owner, check if we have it
+                        match self.content_store.get(&url) {
+                            Ok(Some(content)) => {
+                                info!("✓ Content found locally: {} ({} bytes)", url, content.len());
+                                // Send response back to requester
+                                let response = Message::ContentResponse {
+                                    request_id: request_id.clone(),
+                                    url: url.clone(),
+                                    content: Some(content),
+                                    found: true,
+                                    from_node: self.id.clone(),
+                                };
+                                
+                                // Send back via the peer who forwarded this request
+                                if let Some(ch) = self.message_senders.read().await.get(&peer_id) {
+                                    if let Err(e) = ch.tx.send(response) {
+                                        warn!("Failed to send content response: {}", e);
+                                    }
+                                }
+                            }
+                            Ok(None) => {
+                                info!("✗ Content not found: {}", url);
+                                // Send not-found response
+                                let response = Message::ContentResponse {
+                                    request_id,
+                                    url,
+                                    content: None,
+                                    found: false,
+                                    from_node: self.id.clone(),
+                                };
+                                
+                                if let Some(ch) = self.message_senders.read().await.get(&peer_id) {
+                                    if let Err(e) = ch.tx.send(response) {
+                                        warn!("Failed to send not-found response: {}", e);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                warn!("Error fetching content {}: {}", url, e);
+                            }
+                        }
+                    } else if ttl > 0 {
+                        // Forward request to other peers (if we're not in the path yet)
+                        if !path.contains(&self.id) {
+                            debug!("Forwarding content request {} (ttl: {})", request_id, ttl);
+                            let mut forward_path = path.clone();
+                            forward_path.push(self.id.clone());
+                            
+                            let forward_request = Message::ContentRequest {
+                                request_id,
+                                url,
+                                from_node,
+                                ttl: ttl - 1,
+                                path: forward_path,
+                            };
+                            
+                            // Forward to all connected peers except sender
+                            let senders = self.message_senders.read().await;
+                            for (other_peer_id, ch) in senders.iter() {
+                                if other_peer_id != &peer_id {
+                                    let _ = ch.tx.send(forward_request.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                Message::ContentResponse {
+                    request_id: _,
+                    url,
+                    content,
+                    found,
+                    from_node,
+                } => {
+                    if found {
+                        info!(
+                            "✓ Content response: {} from {} ({} bytes)",
+                            url,
+                            from_node,
+                            content.as_ref().map(|c| c.len()).unwrap_or(0)
+                        );
+                    } else {
+                        info!("✗ Content not found: {} (from {})", url, from_node);
+                    }
+                    
+                    // TODO: Match with pending content requests and complete the future
+                    // For now, just log the response
                 }
                 Message::Data {
                     payload,
@@ -1436,11 +1653,13 @@ impl Clone for Node {
             session_keys: self.session_keys.clone(),
             router: self.router.clone(),
             routing_logger: self.routing_logger.clone(),
+            content_store: self.content_store.clone(),
             shutdown: self.shutdown.clone(),
             shutdown_notify: self.shutdown_notify.clone(),
             message_senders: self.message_senders.clone(),
             pending_pings: self.pending_pings.clone(),
             pending_manual_pings: self.pending_manual_pings.clone(),
+            missed_pongs: self.missed_pongs.clone(),
             api_addr: self.api_addr.clone(),
             discovery_port: self.discovery_port,
             connect_semaphore: self.connect_semaphore.clone(),

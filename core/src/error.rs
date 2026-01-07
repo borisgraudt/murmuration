@@ -24,6 +24,9 @@ pub enum MeshError {
 
     #[error("Timeout error: {0}")]
     Timeout(String),
+
+    #[error("Storage error: {0}")]
+    Storage(String),
 }
 
 pub type Result<T> = std::result::Result<T, MeshError>;
