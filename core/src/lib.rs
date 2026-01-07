@@ -10,6 +10,7 @@ pub mod elysium;
 /// connection management, AI routing, and graceful shutdown.
 pub mod error;
 pub mod identity;
+pub mod naming;
 pub mod node;
 pub mod p2p;
 mod peer_store;

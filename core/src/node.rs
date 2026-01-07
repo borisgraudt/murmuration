@@ -6,6 +6,7 @@ use crate::ai::routing_logger::{
 use crate::config::Config;
 use crate::content_store::ContentStore;
 use crate::elysium::packet::ElysiumPacket;
+use crate::naming::NameRegistry;
 use crate::error::{MeshError, Result};
 use crate::identity;
 use crate::p2p::discovery::DiscoveryManager;
@@ -77,6 +78,9 @@ pub struct Node {
     /// Content store for mesh sites
     content_store: ContentStore,
 
+    /// Name registry (ely://name resolution)
+    name_registry: NameRegistry,
+
     /// Shutdown signal
     shutdown: Arc<RwLock<bool>>,
     /// Programmatic shutdown notifier (used by tests and embedding)
@@ -130,6 +134,7 @@ impl Node {
         let router = Router::new(id.clone());
         let routing_logger = RoutingLogger::new();
         let content_store = ContentStore::new(&data_dir)?;
+        let name_registry = NameRegistry::with_storage(&data_dir)?;
 
         info!("Created new node with ID: {}", id);
 
@@ -152,6 +157,7 @@ impl Node {
             router,
             routing_logger,
             content_store,
+            name_registry,
             shutdown: Arc::new(RwLock::new(false)),
             shutdown_notify: Arc::new(Notify::new()),
             message_senders: Arc::new(RwLock::new(HashMap::new())),
@@ -1654,6 +1660,7 @@ impl Clone for Node {
             router: self.router.clone(),
             routing_logger: self.routing_logger.clone(),
             content_store: self.content_store.clone(),
+            name_registry: self.name_registry.clone(),
             shutdown: self.shutdown.clone(),
             shutdown_notify: self.shutdown_notify.clone(),
             message_senders: self.message_senders.clone(),
