@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod api;
+pub mod bundle;
 pub mod cli_app;
 pub mod config;
 pub mod content_store;
@@ -10,6 +11,7 @@ pub mod elysium;
 /// connection management, AI routing, and graceful shutdown.
 pub mod error;
 pub mod identity;
+pub mod message_store;
 pub mod naming;
 pub mod node;
 pub mod p2p;

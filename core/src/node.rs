@@ -6,6 +6,7 @@ use crate::ai::routing_logger::{
 use crate::config::Config;
 use crate::content_store::ContentStore;
 use crate::elysium::packet::ElysiumPacket;
+use crate::message_store::MessageStore;
 use crate::naming::NameRegistry;
 use crate::error::{MeshError, Result};
 use crate::identity;
@@ -29,7 +30,7 @@ use uuid::Uuid;
 
 const INBOX_MAX_MESSAGES: usize = 500;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct InboxMessage {
     pub seq: u64,
     pub timestamp: String,
@@ -81,6 +82,9 @@ pub struct Node {
     /// Name registry (ely://name resolution)
     name_registry: NameRegistry,
 
+    /// Message store (persistent history)
+    message_store: MessageStore,
+
     /// Shutdown signal
     shutdown: Arc<RwLock<bool>>,
     /// Programmatic shutdown notifier (used by tests and embedding)
@@ -97,6 +101,9 @@ pub struct Node {
 
     /// Heartbeat missed pongs counter (peer_id -> consecutive missed count)
     missed_pongs: Arc<RwLock<HashMap<String, u32>>>,
+
+    /// Pending content requests (request_id -> response channel)
+    pending_content_requests: Arc<RwLock<HashMap<String, oneshot::Sender<Vec<u8>>>>>,
 
     /// Actual API address (may differ from default if port was taken and we had to fall back)
     api_addr: Arc<RwLock<SocketAddr>>,
@@ -135,6 +142,7 @@ impl Node {
         let routing_logger = RoutingLogger::new();
         let content_store = ContentStore::new(&data_dir)?;
         let name_registry = NameRegistry::with_storage(&data_dir)?;
+        let message_store = MessageStore::new(&data_dir)?;
 
         info!("Created new node with ID: {}", id);
 
@@ -158,12 +166,14 @@ impl Node {
             routing_logger,
             content_store,
             name_registry,
+            message_store,
             shutdown: Arc::new(RwLock::new(false)),
             shutdown_notify: Arc::new(Notify::new()),
             message_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_pings: Arc::new(RwLock::new(HashMap::new())),
             pending_manual_pings: Arc::new(RwLock::new(HashMap::new())),
             missed_pongs: Arc::new(RwLock::new(HashMap::new())),
+            pending_content_requests: Arc::new(RwLock::new(HashMap::new())),
             api_addr: Arc::new(RwLock::new(initial_api_addr)),
             discovery_port,
             connect_semaphore: Arc::new(Semaphore::new(max_connect_in_flight)),
@@ -189,11 +199,15 @@ impl Node {
         msg.seq = seq;
 
         let mut inbox = self.inbox.write().await;
-        inbox.push_back(msg);
+        inbox.push_back(msg.clone());
         while inbox.len() > INBOX_MAX_MESSAGES {
             inbox.pop_front();
         }
         drop(inbox);
+        
+        // Persist to DB (best-effort)
+        let _ = self.message_store.save(&msg);
+        
         self.inbox_notify.notify_waiters();
     }
 
@@ -231,6 +245,27 @@ impl Node {
 
     pub fn get_discovery_port(&self) -> u16 {
         self.discovery_port
+    }
+
+    /// Export inbox as bundle (for offline transfer)
+    pub async fn export_bundle(&self, limit: usize) -> Result<crate::bundle::MessageBundle> {
+        let (_, messages) = self.list_inbox(None, limit).await;
+        let bundle = crate::bundle::MessageBundle::new(messages, 7); // 7 days TTL
+        Ok(bundle)
+    }
+
+    /// Import bundle and deliver messages
+    pub async fn import_bundle(&self, bundle: crate::bundle::MessageBundle) -> Result<(usize, usize)> {
+        let mut delivered = 0;
+        let forwarded = 0;
+
+        for msg in bundle.messages {
+            // Simple: just push to inbox (future: check if for us, forward if not)
+            self.push_inbox(msg).await;
+            delivered += 1;
+        }
+
+        Ok((delivered, forwarded))
     }
 
     /// Start the node
@@ -517,8 +552,11 @@ impl Node {
         // Create response channel
         let (tx, rx) = oneshot::channel::<Vec<u8>>();
         
-        // Store pending request (TODO: add pending_content_requests HashMap to Node)
-        // For now, we'll send the request and implement response handling later
+        // Store pending request
+        {
+            let mut pending = self.pending_content_requests.write().await;
+            pending.insert(request_id.clone(), tx);
+        }
         
         // Send request via mesh routing (broadcast or directed if we know a route to target)
         let request_bytes = request.to_bytes().map_err(MeshError::Serialization)?;
@@ -537,11 +575,19 @@ impl Node {
         drop(senders);
         
         // Wait for response (with timeout)
-        // TODO: Implement response matching and channel
-        // For MVP, return error saying remote fetch not fully implemented yet
-        Err(MeshError::Protocol(
-            "Remote content fetch not fully implemented yet (request sent)".to_string()
-        ))
+        match timeout(timeout_dur, rx).await {
+            Ok(Ok(content)) => Ok(Some(content)),
+            Ok(Err(_)) => Err(MeshError::Protocol("Content request canceled".to_string())),
+            Err(_) => {
+                // Cleanup on timeout
+                let mut pending = self.pending_content_requests.write().await;
+                pending.remove(&request_id);
+                Err(MeshError::Timeout(format!(
+                    "Content fetch timeout after {:?}",
+                    timeout_dur
+                )))
+            }
+        }
     }
 
     /// Wait for shutdown signal (Ctrl+C)
@@ -1320,7 +1366,7 @@ impl Node {
                     }
                 }
                 Message::ContentResponse {
-                    request_id: _,
+                    request_id,
                     url,
                     content,
                     found,
@@ -1337,8 +1383,12 @@ impl Node {
                         info!("✗ Content not found: {} (from {})", url, from_node);
                     }
                     
-                    // TODO: Match with pending content requests and complete the future
-                    // For now, just log the response
+                    // Match with pending request and deliver
+                    if let Some(tx) = self.pending_content_requests.write().await.remove(&request_id) {
+                        if let Some(data) = content {
+                            let _ = tx.send(data);
+                        }
+                    }
                 }
                 Message::Data {
                     payload,
@@ -1661,12 +1711,14 @@ impl Clone for Node {
             routing_logger: self.routing_logger.clone(),
             content_store: self.content_store.clone(),
             name_registry: self.name_registry.clone(),
+            message_store: self.message_store.clone(),
             shutdown: self.shutdown.clone(),
             shutdown_notify: self.shutdown_notify.clone(),
             message_senders: self.message_senders.clone(),
             pending_pings: self.pending_pings.clone(),
             pending_manual_pings: self.pending_manual_pings.clone(),
             missed_pongs: self.missed_pongs.clone(),
+            pending_content_requests: self.pending_content_requests.clone(),
             api_addr: self.api_addr.clone(),
             discovery_port: self.discovery_port,
             connect_semaphore: self.connect_semaphore.clone(),
