@@ -1,13 +1,20 @@
-## meshlink
+## Elysium
 
-Decentralized, encrypted P2P mesh node in Rust — with a CLI and a minimalist web topology view.
+**The Internet Without Internet**
 
-### What you should see at the end
+Decentralized, censorship-resistant mesh network. Works offline.
 
-- **Two+ nodes connect** (RSA handshake, AES-GCM session keys).
-- **`peers` shows real connections** (Connected / Handshaking / Disconnected).
-- **Sending a message** works (direct or broadcast).
-- **Web topology page** shows nodes + edges, and animates message flow when we wire events (today it polls peers/status).
+### What is this?
+
+Not a messenger. Not blockchain. **A new network layer.**
+
+- ✅ Works without internet
+- ✅ Censorship-resistant
+- ✅ End-to-end encrypted
+- ✅ Delay-tolerant (hours/days)
+- ✅ Content-addressed
+
+**Use cases:** Protest coordination, emergency communication, bypassing censorship.
 
 ### Repo layout
 
@@ -19,41 +26,27 @@ docs/         Protocol + architecture notes
 scripts/      Local run helpers
 ```
 
-### Quick demo (local)
+### Quick demo
 
-Open **two terminals**:
-
+**Start a node:**
 ```bash
 cd core
 cargo run --bin ely --release -- start 8080
 ```
 
+**Connect another node:**
 ```bash
-cd core
 cargo run --bin ely --release -- start 8081 127.0.0.1:8080
 ```
 
-Then **CLI** (third terminal):
-
+**Send messages:**
 ```bash
-cd core
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- status
+# In another terminal
+MESHLINK_API_PORT=17080 cargo run --bin ely -- broadcast "hello mesh"
+MESHLINK_API_PORT=17080 cargo run --bin ely -- watch
 ```
 
-Try:
-- `status`
-- `peers`
-- `broadcast hello`
-- `watch`
-
-Then **web view** (fourth terminal):
-
-```bash
-cd web/frontend
-python3 -m http.server 8081
-```
-
-Open `http://localhost:8081`.
+**That's it.** No servers, no cloud, no accounts.
 
 ### Install without Docker
 
@@ -77,11 +70,10 @@ ely start 8080
 
 ### Documentation
 
-- `docs/QUICKSTART.md`
-- `docs/TROUBLESHOOTING.md`
-- `docs/ROADMAP.md`
-- `docs/protocol_spec.md`
-- `docs/architecture.md`
+- **[Protocol Spec](docs/PROTOCOL.md)** — wire protocol, addressing, security
+- **[Architecture](docs/ARCHITECTURE.md)** — layers, components, design
+- **[Quickstart](docs/QUICKSTART.md)** — getting started
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** — common issues
 
 ### CI / Pages
 
