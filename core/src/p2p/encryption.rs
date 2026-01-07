@@ -60,14 +60,19 @@ impl EncryptionManager {
             .map_err(|e| MeshError::Peer(format!("Failed to parse private key: {}", e)))
     }
 
-    /// Get public key as base64-encoded string
-    pub fn get_public_key_string(&self) -> Result<String> {
+    /// Get public key as DER bytes (for hashing/verification)
+    pub fn get_public_key_der(&self) -> Result<Vec<u8>> {
         use rsa::pkcs8::EncodePublicKey;
         let pub_key_der = self
             .public_key
             .to_public_key_der()
             .map_err(|e| MeshError::Peer(format!("Failed to serialize public key: {}", e)))?;
-        Ok(general_purpose::STANDARD.encode(pub_key_der.as_bytes()))
+        Ok(pub_key_der.as_bytes().to_vec())
+    }
+
+    /// Get public key as base64-encoded string
+    pub fn get_public_key_string(&self) -> Result<String> {
+        Ok(general_purpose::STANDARD.encode(self.get_public_key_der()?))
     }
 
     /// Parse public key from base64-encoded string

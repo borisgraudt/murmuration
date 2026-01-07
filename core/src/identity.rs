@@ -2,8 +2,25 @@ use crate::error::{MeshError, Result};
 use crate::p2p::encryption::EncryptionManager;
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+
+/// Generate node_id from public key (base58 encoded hash)
+fn derive_node_id(encryption: &EncryptionManager) -> Result<String> {
+    // Get public key DER bytes
+    let public_key_der = encryption.get_public_key_der()?;
+    
+    // Hash it
+    let mut hasher = Sha256::new();
+    hasher.update(&public_key_der);
+    let hash = hasher.finalize();
+    
+    // Base58 encode (like Bitcoin addresses)
+    let node_id = bs58::encode(&hash[..]).into_string();
+    
+    Ok(node_id)
+}
 
 #[derive(Clone)]
 pub struct NodeIdentity {
@@ -59,8 +76,8 @@ pub fn load_or_create(data_dir: &Path) -> Result<NodeIdentity> {
     }
 
     // Create a new identity
-    let node_id = uuid::Uuid::new_v4().to_string();
     let encryption = EncryptionManager::new()?;
+    let node_id = derive_node_id(&encryption)?;
 
     let private_key_pkcs8 = encryption.encode_private_key_pkcs8()?;
     let file = IdentityFileV1 {
