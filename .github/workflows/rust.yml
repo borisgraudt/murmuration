@@ -58,7 +58,7 @@ jobs:
             target: x86_64-pc-windows-msvc
     timeout-minutes: 30
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -66,7 +66,7 @@ jobs:
       - name: Build all binaries
         working-directory: core
         run: |
-          cargo build --release --bin core --bin viz --bin cli --verbose
+          cargo build --release --bin core --bin viz --bin cli --bin ely --verbose
       - name: List build artifacts
         working-directory: core
         shell: bash
@@ -75,7 +75,7 @@ jobs:
           ls -la target/release/ 2>/dev/null || echo "core/target/release/ not found"
           echo "Checking for binaries in root target/release/..."
           ls -la ../target/release/ 2>/dev/null || echo "root target/release/ not found"
-    - name: Run tests
+      - name: Run tests
         working-directory: core
         timeout-minutes: 15
         run: cargo test --verbose --lib
@@ -109,6 +109,14 @@ jobs:
             echo "✗ cli binary not found"
             exit 1
           fi
+          if [ -f target/release/ely ]; then
+            echo "✓ ely binary found in core/target/release/"
+          elif [ -f ../target/release/ely ]; then
+            echo "✓ ely binary found in root target/release/"
+          else
+            echo "✗ ely binary not found"
+            exit 1
+          fi
           echo "All binaries found successfully"
       
       - name: Check binaries exist (Windows)
@@ -139,6 +147,14 @@ jobs:
             Write-Host "✓ cli.exe found in root target/release/"
           } else {
             Write-Error "✗ cli.exe not found"
+            exit 1
+          }
+          if (Test-Path "target/release/ely.exe") {
+            Write-Host "✓ ely.exe found in core/target/release/"
+          } elseif (Test-Path "../target/release/ely.exe") {
+            Write-Host "✓ ely.exe found in root target/release/"
+          } else {
+            Write-Error "✗ ely.exe not found"
             exit 1
           }
           Write-Host "All binaries found successfully"
