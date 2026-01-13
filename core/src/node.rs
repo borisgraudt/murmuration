@@ -268,6 +268,21 @@ impl Node {
         Ok((delivered, forwarded))
     }
 
+    /// Register a human-readable name
+    pub async fn register_name(&self, name: String, node_id: String) -> Result<()> {
+        self.name_registry.register(name, node_id).await
+    }
+
+    /// Resolve name to node_id
+    pub async fn resolve_name(&self, name: &str) -> Option<String> {
+        self.name_registry.resolve(name).await
+    }
+
+    /// List all registered names
+    pub async fn list_names(&self) -> Vec<crate::naming::NameRecord> {
+        self.name_registry.list().await
+    }
+
     /// Start the node
     pub async fn start(&self) -> Result<()> {
         info!("Starting MeshLink node {}", self.id);

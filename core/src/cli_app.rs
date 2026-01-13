@@ -112,6 +112,88 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             let url = args[2].clone();
             fetch(url)?;
         }
+        "name" => {
+            if args.len() < 3 {
+                eprintln!("{}", format!("Usage: {} name <register|resolve> [args]", bin).yellow());
+                return Ok(());
+            }
+            let subcommand = &args[2];
+            match subcommand.as_str() {
+                "register" => {
+                    if args.len() < 5 {
+                        eprintln!(
+                            "{}",
+                            format!("Usage: {} name register <name> <node_id>", bin).yellow()
+                        );
+                        return Ok(());
+                    }
+                    let name = args[3].clone();
+                    let node_id = args[4].clone();
+                    name_register(name, node_id)?;
+                }
+                "resolve" => {
+                    if args.len() < 4 {
+                        eprintln!(
+                            "{}",
+                            format!("Usage: {} name resolve <name>", bin).yellow()
+                        );
+                        return Ok(());
+                    }
+                    let name = args[3].clone();
+                    name_resolve(name)?;
+                }
+                _ => {
+                    eprintln!("{} Unknown name subcommand: {}", "✗".red().bold(), subcommand.red());
+                    eprintln!("  Available: register, resolve");
+                }
+            }
+        }
+        "bundle" => {
+            if args.len() < 3 {
+                eprintln!("{}", format!("Usage: {} bundle <export|import|info> [args]", bin).yellow());
+                return Ok(());
+            }
+            let subcommand = &args[2];
+            match subcommand.as_str() {
+                "export" => {
+                    if args.len() < 4 {
+                        eprintln!(
+                            "{}",
+                            format!("Usage: {} bundle export <output_file>", bin).yellow()
+                        );
+                        return Ok(());
+                    }
+                    let output_file = args[3].clone();
+                    bundle_export(output_file)?;
+                }
+                "import" => {
+                    if args.len() < 4 {
+                        eprintln!(
+                            "{}",
+                            format!("Usage: {} bundle import <input_file>", bin).yellow()
+                        );
+                        return Ok(());
+                    }
+                    let input_file = args[3].clone();
+                    bundle_import(input_file)?;
+                }
+                "info" => {
+                    if args.len() < 4 {
+                        eprintln!(
+                            "{}",
+                            format!("Usage: {} bundle info <bundle_file>", bin).yellow()
+                        );
+                        return Ok(());
+                    }
+                    let bundle_file = args[3].clone();
+                    bundle_info(bundle_file)?;
+                }
+                _ => {
+                    eprintln!("{} Unknown bundle subcommand: {}", "✗".red().bold(), subcommand.red());
+                    eprintln!("  Available: export, import, info");
+                }
+            }
+        }
         _ => {
             eprintln!("{} Unknown command: {}", "✗".red().bold(), command.red());
             print_usage(&bin);
@@ -175,6 +257,26 @@ fn print_usage(bin: &str) {
     println!(
         "  {} <url>                     Fetch content from mesh (ely://node_id/path)",
         "fetch".cyan()
+    );
+    println!(
+        "  {} register <name> <id>     Register a human-readable name",
+        "name".cyan()
+    );
+    println!(
+        "  {} resolve <name>           Resolve name to node_id",
+        "name".cyan()
+    );
+    println!(
+        "  {} export <file>            Export messages to bundle file",
+        "bundle".cyan()
+    );
+    println!(
+        "  {} import <file>            Import bundle from file",
+        "bundle".cyan()
+    );
+    println!(
+        "  {} info <file>              Show bundle info",
+        "bundle".cyan()
     );
 }
 
@@ -655,6 +757,196 @@ fn fetch(url: String) -> anyhow::Result<()> {
                     println!("{}", content);
                 }
             }
+        }
+    } else {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        eprintln!("{} Error: {}", "✗".red().bold(), error.red());
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn name_register(name: String, node_id: String) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+
+    println!(
+        "{} Registering name: {} → {}",
+        "⚡".cyan().bold(),
+        name.yellow(),
+        node_id.green()
+    );
+
+    let request = serde_json::json!({
+        "command": "name_register",
+        "name": name,
+        "node_id": node_id
+    });
+
+    writeln!(stream, "{}", request)?;
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+
+    if resp["success"].as_bool().unwrap_or(false) {
+        println!("{} Name registered successfully", "✓".green().bold());
+    } else {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        eprintln!("{} Error: {}", "✗".red().bold(), error.red());
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn name_resolve(name: String) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+
+    println!("{} Resolving name: {}", "⚡".cyan().bold(), name.yellow());
+
+    let request = serde_json::json!({
+        "command": "name_resolve",
+        "name": name
+    });
+
+    writeln!(stream, "{}", request)?;
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+
+    if resp["success"].as_bool().unwrap_or(false) {
+        if let Some(node_id) = resp["data"]["node_id"].as_str() {
+            println!("{} {} → {}", "✓".green().bold(), name.yellow(), node_id.green());
+        }
+    } else {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        eprintln!("{} Error: {}", "✗".red().bold(), error.red());
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn bundle_export(output_file: String) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+
+    println!("{} Exporting bundle to: {}", "📦".cyan().bold(), output_file.yellow());
+
+    let request = serde_json::json!({
+        "command": "bundle_export",
+        "output_path": output_file
+    });
+
+    writeln!(stream, "{}", request)?;
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+
+    if resp["success"].as_bool().unwrap_or(false) {
+        if let Some(count) = resp["data"]["message_count"].as_u64() {
+            println!("{} Bundle exported: {} messages", "✓".green().bold(), count);
+        }
+    } else {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        eprintln!("{} Error: {}", "✗".red().bold(), error.red());
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn bundle_import(input_file: String) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(30)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(30)))?;
+
+    println!("{} Importing bundle from: {}", "📦".cyan().bold(), input_file.yellow());
+
+    let request = serde_json::json!({
+        "command": "bundle_import",
+        "input_path": input_file
+    });
+
+    writeln!(stream, "{}", request)?;
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+
+    if resp["success"].as_bool().unwrap_or(false) {
+        if let Some(data) = resp["data"].as_object() {
+            let delivered = data["delivered"].as_u64().unwrap_or(0);
+            let forwarded = data["forwarded"].as_u64().unwrap_or(0);
+            println!(
+                "{} Bundle imported: {} delivered, {} forwarded",
+                "✓".green().bold(),
+                delivered,
+                forwarded
+            );
+        }
+    } else {
+        let error = resp["error"].as_str().unwrap_or("Unknown error");
+        eprintln!("{} Error: {}", "✗".red().bold(), error.red());
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+fn bundle_info(bundle_file: String) -> anyhow::Result<()> {
+    let api_port = get_api_port();
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+    stream.set_write_timeout(Some(Duration::from_secs(10)))?;
+
+    println!("{} Bundle info: {}", "📦".cyan().bold(), bundle_file.yellow());
+
+    let request = serde_json::json!({
+        "command": "bundle_info",
+        "bundle_path": bundle_file
+    });
+
+    writeln!(stream, "{}", request)?;
+
+    let mut response = String::new();
+    use std::io::BufRead;
+    std::io::BufReader::new(&stream).read_line(&mut response)?;
+
+    let resp: serde_json::Value = serde_json::from_str(&response)?;
+
+    if resp["success"].as_bool().unwrap_or(false) {
+        if let Some(data) = resp["data"].as_object() {
+            let count = data["message_count"].as_u64().unwrap_or(0);
+            let created = data["created_at"].as_str().unwrap_or("?");
+            let expires = data["expires_at"].as_str().unwrap_or("?");
+            let expired = data["expired"].as_bool().unwrap_or(false);
+
+            println!("{} Bundle Info:", "ℹ".cyan().bold());
+            println!("  Messages: {}", count);
+            println!("  Created:  {}", created);
+            println!("  Expires:  {}", expires);
+            println!("  Expired:  {}", if expired { "YES".red() } else { "NO".green() });
         }
     } else {
         let error = resp["error"].as_str().unwrap_or("Unknown error");

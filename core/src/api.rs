@@ -2,6 +2,7 @@
 use crate::error::{MeshError, Result};
 use crate::node::Node;
 use base64::Engine;
+use chrono;
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -57,6 +58,20 @@ enum ApiRequest {
         #[serde(default)]
         timeout_ms: Option<u64>,
     },
+    #[serde(rename = "name_register")]
+    NameRegister { name: String, node_id: String },
+    #[serde(rename = "name_resolve")]
+    NameResolve { name: String },
+    #[serde(rename = "bundle_export")]
+    BundleExport {
+        output_path: String,
+        #[serde(default)]
+        max_age_hours: Option<u64>,
+    },
+    #[serde(rename = "bundle_import")]
+    BundleImport { input_path: String },
+    #[serde(rename = "bundle_info")]
+    BundleInfo { bundle_path: String },
 }
 
 /// API response
@@ -269,6 +284,76 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 }
                 Ok(None) => Ok(ApiResponse::error("Content not found".to_string())),
                 Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+            }
+        }
+        ApiRequest::NameRegister { name, node_id } => {
+            match node.register_name(name.clone(), node_id.clone()).await {
+                Ok(()) => Ok(ApiResponse::success(serde_json::json!({
+                    "name": name,
+                    "node_id": node_id
+                }))),
+                Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+            }
+        }
+        ApiRequest::NameResolve { name } => {
+            match node.resolve_name(&name).await {
+                Some(node_id) => Ok(ApiResponse::success(serde_json::json!({
+                    "name": name,
+                    "node_id": node_id
+                }))),
+                None => Ok(ApiResponse::error(format!("Name not found: {}", name))),
+            }
+        }
+        ApiRequest::BundleExport { output_path, max_age_hours: _ } => {
+            let limit = 1000; // Max messages per bundle
+            match node.export_bundle(limit).await {
+                Ok(bundle) => {
+                    let path = std::path::Path::new(&output_path);
+                    match bundle.save(path) {
+                        Ok(()) => Ok(ApiResponse::success(serde_json::json!({
+                            "output_path": output_path,
+                            "message_count": bundle.messages.len()
+                        }))),
+                        Err(e) => Ok(ApiResponse::error(format!("Failed to save bundle: {}", e))),
+                    }
+                }
+                Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+            }
+        }
+        ApiRequest::BundleImport { input_path } => {
+            let path = std::path::Path::new(&input_path);
+            match crate::bundle::MessageBundle::load(path) {
+                Ok(bundle) => {
+                    let msg_count = bundle.messages.len();
+                    match node.import_bundle(bundle).await {
+                        Ok((delivered, forwarded)) => Ok(ApiResponse::success(serde_json::json!({
+                            "input_path": input_path,
+                            "total_messages": msg_count,
+                            "delivered": delivered,
+                            "forwarded": forwarded
+                        }))),
+                        Err(e) => Ok(ApiResponse::error(format!("Failed to import bundle: {}", e))),
+                    }
+                }
+                Err(e) => Ok(ApiResponse::error(format!("Failed to load bundle: {}", e))),
+            }
+        }
+        ApiRequest::BundleInfo { bundle_path } => {
+            let path = std::path::Path::new(&bundle_path);
+            match crate::bundle::MessageBundle::load(path) {
+                Ok(bundle) => {
+                    let info = bundle.info();
+                    let now = chrono::Utc::now().timestamp();
+                    let expired = bundle.expires_at < now;
+                    Ok(ApiResponse::success(serde_json::json!({
+                        "bundle_path": bundle_path,
+                        "message_count": info.message_count,
+                        "created_at": info.created_at,
+                        "expires_at": info.expires_at,
+                        "expired": expired
+                    })))
+                }
+                Err(e) => Ok(ApiResponse::error(format!("Failed to load bundle: {}", e))),
             }
         }
     }
