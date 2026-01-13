@@ -203,16 +203,49 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
     const elyUrl = "{}";
     const gatewayUrl = "/e/{}";
     
+    // Update document title immediately
+    document.title = elyUrl;
+    
+    // Add visual indicator showing original ely:// URL
+    function addElyIndicator() {{
+        // Check if indicator already exists
+        if (document.getElementById('elysium-url-indicator')) return;
+        
+        const indicator = document.createElement('div');
+        indicator.id = 'elysium-url-indicator';
+        indicator.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #2563eb;
+            color: white;
+            padding: 8px 16px;
+            font-family: system-ui, sans-serif;
+            font-size: 12px;
+            z-index: 999999;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+        indicator.innerHTML = `
+            <span style="font-weight: bold;">🌐 Elysium:</span>
+            <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px; font-size: 11px;">${{elyUrl}}</code>
+            <button onclick="this.parentElement.style.display='none'" style="margin-left: auto; background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">✕</button>
+        `;
+        document.body.insertBefore(indicator, document.body.firstChild);
+        
+        // Adjust body margin to account for indicator
+        document.body.style.paddingTop = (document.body.style.paddingTop ? 
+            parseInt(document.body.style.paddingTop) + 40 : 40) + 'px';
+    }}
+    
     // Rewrite URL in address bar using History API
     try {{
         // Replace current history entry with ely:// URL
         const newState = {{ ely: elyUrl }};
-        history.replaceState(newState, document.title || elyUrl, gatewayUrl);
-        
-        // Update document title if needed
-        if (!document.title || document.title === 'Elysium Web Gateway') {{
-            document.title = elyUrl;
-        }}
+        history.replaceState(newState, elyUrl, gatewayUrl);
         
         // Override browser back/forward to maintain ely:// URL
         window.addEventListener('popstate', function(e) {{
@@ -220,6 +253,13 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
                 history.replaceState(e.state, document.title, gatewayUrl);
             }}
         }});
+        
+        // Add visual indicator when DOM is ready
+        if (document.readyState === 'loading') {{
+            document.addEventListener('DOMContentLoaded', addElyIndicator);
+        }} else {{
+            addElyIndicator();
+        }}
     }} catch (e) {{
         console.warn('Could not rewrite URL:', e);
     }}
