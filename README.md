@@ -42,13 +42,16 @@ scripts/      Local run helpers
 
 **Start a node:**
 ```bash
-cd core
-cargo run --bin ely --release -- start 8080
+ely start 8080
+# Or run in background (daemon mode):
+ely start 8080 -d
 ```
 
 **Connect another node:**
 ```bash
-cargo run --bin ely --release -- start 8081 127.0.0.1:8080
+ely start 8081 127.0.0.1:8080
+# Or run in background:
+ely start 8081 127.0.0.1:8080 -d
 ```
 
 **Send messages:**

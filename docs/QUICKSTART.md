@@ -17,26 +17,29 @@ Now you can use `ely` directly instead of `cargo run --bin ely --release --`
 
 ### Step 1: Start two nodes
 
-**Terminal 1:**
+**Option A: Foreground (logs visible, Ctrl+C to stop)**
 ```bash
+# Terminal 1
 ely start 8080
-```
 
-Wait for:
-```
-INFO: Created new node with ID: Qm7xRJ...
-INFO: Listening on: 0.0.0.0:8080
-INFO: API server listening on: 0.0.0.0:17080
-```
-
-**Terminal 2:**
-```bash
+# Terminal 2 (new terminal)
 ely start 8081 127.0.0.1:8080
 ```
 
-Wait for:
-```
-INFO: Connected to peer 127.0.0.1:8080
+**Option B: Background (daemon mode - can use same terminal)**
+```bash
+# Terminal 1
+ely start 8080 -d
+# Output: ✓ Node started in background (PID: 12345)
+#         → Logs: .ely/node-8080/node-8080.log
+#         → Stop with: kill 12345
+
+# Now you can use the same terminal for commands:
+ely status
+ely broadcast "hello"
+
+# Terminal 2
+ely start 8081 127.0.0.1:8080 -d
 ```
 
 ### Step 2: Send messages

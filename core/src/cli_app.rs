@@ -22,16 +22,17 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
 
     match command.as_str() {
         "start" => {
-            // `ely start <p2p_port> [peer1] [peer2] ... [flags]`
+            // `ely start <p2p_port> [peer1] [peer2] ... [-d|--daemon]`
             // We reuse `Config::from_args` by shifting args left (so port becomes args[1]).
             if args.len() < 3 {
                 eprintln!(
                     "{}",
-                    format!("Usage: {} start <p2p_port> [peer1] [peer2] ... [flags]", bin).yellow()
+                    format!("Usage: {} start <p2p_port> [peer1] [peer2] ... [-d|--daemon]", bin).yellow()
                 );
                 return Ok(());
             }
-            start_node(&args[2..])?;
+            let daemon = args.iter().any(|a| a == "-d" || a == "--daemon");
+            start_node(&args[2..], daemon)?;
         }
         "chat" => {
             if args.len() < 3 {
@@ -215,9 +216,10 @@ fn print_usage(bin: &str) {
     println!();
     println!("{}", "Commands:".bright_white().bold());
     println!(
-        "  {} <p2p_port> [peers...]   Start a node (P2P + discovery + local API)",
+        "  {} <p2p_port> [peers...] [-d]  Start a node (P2P + discovery + local API)",
         "start".cyan()
     );
+    println!("                                {} Use -d to run in background (daemon mode)", "→".dimmed());
     println!(
         "  {} <peer_id|broadcast>     Interactive chat (Ctrl+C to exit)",
         "chat".cyan()
@@ -539,27 +541,77 @@ fn chat(target: String) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn start_node(start_args: &[String]) -> anyhow::Result<()> {
+fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
     // start_args: ["<port>", ...]
-    let mut config_args = Vec::with_capacity(start_args.len() + 1);
-    config_args.push("core".to_string());
-    config_args.extend_from_slice(start_args);
-
-    // Initialize tracing (only for the long-running start command)
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .try_init();
+    // Filter out daemon flags from args before parsing config
+    let mut config_args: Vec<String> = start_args
+        .iter()
+        .filter(|a| *a != "-d" && *a != "--daemon")
+        .cloned()
+        .collect();
+    
+    config_args.insert(0, "core".to_string());
 
     let config = Config::from_args(&config_args)?;
-    let node = Node::new(config)?;
+    
+    if daemon {
+        // Run in background: spawn new process and detach
+        let mut cmd = std::process::Command::new(std::env::current_exe()?);
+        
+        // Rebuild args without daemon flag
+        let mut new_args: Vec<String> = vec!["ely".to_string(), "start".to_string()];
+        new_args.extend(config_args.iter().skip(1).cloned()); // Skip "core", keep rest
+        cmd.args(&new_args);
+        
+        // Redirect stdout/stderr to log file
+        let log_dir = config.data_dir.as_ref()
+            .map(|d| d.clone())
+            .unwrap_or_else(|| std::path::PathBuf::from(".ely"));
+        std::fs::create_dir_all(&log_dir)?;
+        let log_file = log_dir.join(format!("node-{}.log", config.listen_addr.port()));
+        
+        let file = std::fs::File::create(&log_file)?;
+        cmd.stdout(file.try_clone()?);
+        cmd.stderr(file);
+        
+        // Spawn and detach (don't wait for child)
+        let child = cmd.spawn()?;
+        let pid = child.id();
+        
+        println!(
+            "{} Node started in background (PID: {})",
+            "✓".green().bold(),
+            pid
+        );
+        println!(
+            "{} Logs: {}",
+            "→".cyan(),
+            log_file.display()
+        );
+        println!(
+            "{} Stop with: kill {}",
+            "→".cyan(),
+            pid
+        );
+        
+        Ok(())
+    } else {
+        // Run in foreground (original behavior)
+        // Initialize tracing (only for the long-running start command)
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+            )
+            .try_init();
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?;
-    rt.block_on(async move { node.start().await })?;
-    Ok(())
+        let node = Node::new(config)?;
+
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()?;
+        rt.block_on(async move { node.start().await })?;
+        Ok(())
+    }
 }
 
 fn ping(peer_id: String, timeout_ms: u64) -> anyhow::Result<()> {
