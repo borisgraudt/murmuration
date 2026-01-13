@@ -281,14 +281,46 @@ fn print_usage(bin: &str) {
 }
 
 fn get_api_port() -> u16 {
+    // Priority 1: Environment variable
     if let Ok(port) = std::env::var("MESHLINK_API_PORT") {
         if let Ok(p) = port.parse::<u16>() {
             return p;
         }
     }
-    // Default scheme: 9000 + P2P port (e.g. 8080 -> 17080)
-    // Try the common local range first.
-    for port in 17070..=17100 {
+
+    // Priority 2: Last used port file (from running node)
+    if let Some(home) = std::env::var("HOME").ok() {
+        let port_file = std::path::Path::new(&home).join(".elysium_api_port");
+        if let Ok(content) = std::fs::read_to_string(&port_file) {
+            if let Ok(port) = content.trim().parse::<u16>() {
+                // Verify it's actually running
+                if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
+                    eprintln!(
+                        "{} Connected to API on port {} {}",
+                        "✓".green(),
+                        port.to_string().cyan(),
+                        "(from ~/.elysium_api_port)".dimmed()
+                    );
+                    return port;
+                }
+            }
+        }
+    }
+
+    // Priority 3: Default port (most common: 8080 → 17080)
+    let default_port = 17080;
+    if TcpStream::connect(format!("127.0.0.1:{}", default_port)).is_ok() {
+        eprintln!(
+            "{} Connected to API on port {} {}",
+            "✓".green(),
+            default_port.to_string().cyan(),
+            "(default)".dimmed()
+        );
+        return default_port;
+    }
+
+    // Priority 4: Scan common ports (8080-8089 → 17080-17089)
+    for port in 17080..=17089 {
         match TcpStream::connect(format!("127.0.0.1:{}", port)) {
             Ok(_) => {
                 eprintln!(
@@ -301,15 +333,24 @@ fn get_api_port() -> u16 {
             Err(_) => continue,
         }
     }
+
+    // Not found - show helpful message
     eprintln!(
         "{}",
-        "✗ Error: Could not find MeshLink API server".red().bold()
+        "✗ Error: Could not find Elysium API server".red().bold()
     );
-    eprintln!("  Make sure a node is running and try:");
+    eprintln!("  Make sure a node is running:");
     eprintln!(
         "  {} {}",
-        "-".dimmed(),
-        "MESHLINK_API_PORT=17080 cargo run --bin ely -- status".yellow()
+        "→".dimmed(),
+        "ely start 8080".yellow()
+    );
+    eprintln!();
+    eprintln!("  Or specify the API port explicitly:");
+    eprintln!(
+        "  {} {}",
+        "→".dimmed(),
+        "MESHLINK_API_PORT=17080 ely status".yellow()
     );
     std::process::exit(1);
 }

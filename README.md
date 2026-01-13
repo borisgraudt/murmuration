@@ -79,19 +79,31 @@ MESHLINK_API_PORT=17081 cargo run --bin ely -- bundle import /tmp/messages.bundl
 
 **That's it.** No servers, no cloud, no accounts.
 
-### Install without Docker
+### Installation
 
-If you have Rust installed, you can install `ely` into your PATH:
+**Option 1: Install from source (recommended)**
+```bash
+git clone https://github.com/borisgraudt/elysium.git
+cd elysium
+make install
+```
 
+**Option 2: Install from GitHub**
 ```bash
 cargo install --git https://github.com/borisgraudt/elysium.git --package meshlink_core --bin ely
 ```
 
-Then:
+**Option 3: Use Docker**
+```bash
+docker pull ghcr.io/borisgraudt/elysium:main
+```
 
+**Then run:**
 ```bash
 ely start 8080
 ```
+
+No `MESHLINK_API_PORT` needed! CLI auto-discovers the running node.
 
 ### Notes (frugal but important)
 

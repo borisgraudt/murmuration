@@ -4,25 +4,34 @@
 
 ## 🚀 Quick Demo (3 minutes)
 
+### Step 0: Install ely
+
+```bash
+make install
+# Or: cargo install --path core --bin ely
+```
+
+Now you can use `ely` directly instead of `cargo run --bin ely --release --`
+
+---
+
 ### Step 1: Start two nodes
 
 **Terminal 1:**
 ```bash
-cd core
-cargo run --bin ely --release -- start 8080
+ely start 8080
 ```
 
 Wait for:
 ```
 INFO: Created new node with ID: Qm7xRJ...
 INFO: Listening on: 0.0.0.0:8080
-INFO: Discovery enabled on port 9998
+INFO: API server listening on: 0.0.0.0:17080
 ```
 
 **Terminal 2:**
 ```bash
-cd core
-cargo run --bin ely --release -- start 8081 127.0.0.1:8080
+ely start 8081 127.0.0.1:8080
 ```
 
 Wait for:
@@ -34,37 +43,38 @@ INFO: Connected to peer 127.0.0.1:8080
 
 **Terminal 3:**
 ```bash
-cd core
-# Send a broadcast message
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- broadcast "Hello Elysium!"
+# Send a broadcast message (CLI auto-finds the API port!)
+ely broadcast "Hello Elysium!"
 
 # Check your inbox
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- inbox 10
+ely inbox 10
 
 # Watch live messages (Ctrl+C to exit)
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- watch
+ely watch
 ```
+
+**No `MESHLINK_API_PORT` needed!** CLI automatically discovers running nodes.
 
 ### Step 3: Publish content
 
 ```bash
 # Publish some content
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- publish site/index.html "<h1>Hello World</h1>"
+ely publish site/index.html "<h1>Hello World</h1>"
 
 # Output: ✓ Content published at: ely://Qm7xRJ.../site/index.html
 
 # Fetch it back
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- fetch ely://Qm7xRJ.../site/index.html
+ely fetch ely://Qm7xRJ.../site/index.html
 ```
 
 ### Step 4: Register names
 
 ```bash
 # Register a human-readable name
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name register alice Qm7xRJ...
+ely name register alice Qm7xRJ...
 
 # Resolve it
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name resolve alice
+ely name resolve alice
 # Output: ✓ alice → Qm7xRJ...
 ```
 
@@ -72,15 +82,20 @@ MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name resolve alice
 
 ```bash
 # Export messages to bundle
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- bundle export /tmp/messages.bundle
+ely bundle export /tmp/messages.bundle
 # Output: ✓ Bundle exported: 3 messages
 
 # Check bundle info
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- bundle info /tmp/messages.bundle
+ely bundle info /tmp/messages.bundle
 
-# Import on another node
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- bundle import /tmp/messages.bundle
+# Import on another node (Terminal 2)
+# First, get Terminal 2's API port with: ely status
+# Then specify it explicitly:
+MESHLINK_API_PORT=17081 ely bundle import /tmp/messages.bundle
 # Output: ✓ Bundle imported: 3 delivered, 0 forwarded
+
+# Or switch to Terminal 2 and run directly:
+ely bundle import /tmp/messages.bundle
 ```
 
 ---
@@ -183,16 +198,23 @@ ely bundle info <bundle_file>
 
 ## 🔧 Configuration
 
-### API Port Formula
+### API Port Auto-Discovery
 
-API port = `9000 + P2P_PORT`
+**No configuration needed!** CLI automatically finds the running node.
 
+**How it works:**
+1. Checks `MESHLINK_API_PORT` env var (if set)
+2. Reads `~/.elysium_api_port` (last node saves its port here)
+3. Tries default port `17080` (most common: 8080 → 17080)
+4. Scans ports 17080-17089
+
+**API Port Formula:** `9000 + P2P_PORT`
 - P2P port 8080 → API port 17080
 - P2P port 8081 → API port 17081
 
-Or set manually:
+**Override if needed:**
 ```bash
-MESHLINK_API_PORT=17080 ely status
+MESHLINK_API_PORT=17081 ely status
 ```
 
 ### Environment Variables

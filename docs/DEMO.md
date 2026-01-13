@@ -2,12 +2,21 @@
 
 **Full test of all features in 10 minutes**
 
+## Prerequisites
+
+Install `ely` first:
+```bash
+make install
+# Or: cargo install --path core --bin ely
+```
+
+---
+
 ## Setup (3 terminals)
 
 ### Terminal 1: Node Alice (8080)
 ```bash
-cd core
-cargo run --bin ely --release -- start 8080
+ely start 8080
 ```
 
 Copy Alice's node_id from output:
@@ -24,8 +33,7 @@ ALICE_ID="Qm7xRJ..."  # Replace with actual ID
 
 ### Terminal 2: Node Bob (8081)
 ```bash
-cd core
-cargo run --bin ely --release -- start 8081 127.0.0.1:8080
+ely start 8081 127.0.0.1:8080
 ```
 
 Copy Bob's node_id:
@@ -47,13 +55,13 @@ INFO: Connected to peer 127.0.0.1:8080
 #### 1. Check network status
 
 ```bash
-# Alice's node
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- status
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- peers
+# Alice's node (CLI auto-discovers port 17080)
+ely status
+ely peers
 
-# Bob's node
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- status
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- peers
+# Bob's node (switch to Terminal 2 or specify port)
+MESHLINK_API_PORT=17081 ely status
+MESHLINK_API_PORT=17081 ely peers
 ```
 
 **Expected:** Both nodes see each other as connected.
@@ -63,21 +71,21 @@ MESHLINK_API_PORT=17081 cargo run --bin ely --release -- peers
 #### 2. Messaging
 
 ```bash
-# Alice broadcasts
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- broadcast "Hello from Alice!"
+# Alice broadcasts (CLI finds port 17080 automatically)
+ely broadcast "Hello from Alice!"
 
-# Bob checks inbox
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- inbox 10
+# Bob checks inbox (run in Terminal 2, or specify port)
+MESHLINK_API_PORT=17081 ely inbox 10
 ```
 
 **Expected:** Bob sees Alice's message.
 
 ```bash
-# Bob sends to Alice
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- send $ALICE_ID "Hi Alice, this is Bob!"
+# Bob sends to Alice (in Terminal 2 or with port)
+MESHLINK_API_PORT=17081 ely send $ALICE_ID "Hi Alice, this is Bob!"
 
-# Alice checks inbox
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- inbox 10
+# Alice checks inbox (Terminal 1)
+ely inbox 10
 ```
 
 **Expected:** Alice sees Bob's direct message.
@@ -87,8 +95,8 @@ MESHLINK_API_PORT=17080 cargo run --bin ely --release -- inbox 10
 #### 3. Live watch (keep running in background)
 
 ```bash
-# In a 4th terminal:
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- watch
+# In Terminal 1 or a 4th terminal:
+ely watch
 ```
 
 Send more messages and watch them appear in real-time!
@@ -98,14 +106,14 @@ Send more messages and watch them appear in real-time!
 #### 4. Content Publishing
 
 ```bash
-# Alice publishes a website
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- publish site/index.html "<h1>Alice's Site</h1><p>Welcome to Elysium!</p>"
+# Alice publishes a website (Terminal 1)
+ely publish site/index.html "<h1>Alice's Site</h1><p>Welcome to Elysium!</p>"
 
 # Copy the URL from output:
 # ✓ Content published at: ely://Qm7xRJ.../site/index.html
 
-# Bob fetches it
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- fetch ely://$ALICE_ID/site/index.html
+# Bob fetches it (Terminal 2)
+MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/index.html
 ```
 
 **Expected:** Bob retrieves Alice's content.
@@ -118,11 +126,11 @@ MESHLINK_API_PORT=17081 cargo run --bin ely --release -- fetch ely://$ALICE_ID/s
 # Create a test file
 echo "body { color: blue; }" > /tmp/style.css
 
-# Alice publishes it
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- publish site/style.css @/tmp/style.css
+# Alice publishes it (Terminal 1)
+ely publish site/style.css @/tmp/style.css
 
-# Bob fetches it
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- fetch ely://$ALICE_ID/site/style.css
+# Bob fetches it (Terminal 2)
+MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/style.css
 ```
 
 **Expected:** Bob gets the CSS file.
@@ -132,15 +140,15 @@ MESHLINK_API_PORT=17081 cargo run --bin ely --release -- fetch ely://$ALICE_ID/s
 #### 6. Naming System
 
 ```bash
-# Alice registers her name
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name register alice $ALICE_ID
+# Alice registers her name (Terminal 1)
+ely name register alice $ALICE_ID
 
-# Bob registers his name
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- name register bob $BOB_ID
+# Bob registers his name (Terminal 2)
+MESHLINK_API_PORT=17081 ely name register bob $BOB_ID
 
-# Resolve names
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name resolve alice
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name resolve bob
+# Resolve names (Terminal 1)
+ely name resolve alice
+ely name resolve bob
 ```
 
 **Expected:**
@@ -154,20 +162,20 @@ MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name resolve bob
 #### 7. Bundle Protocol (USB Transfer Simulation)
 
 ```bash
-# Alice sends more messages
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- broadcast "Message 1 for bundle"
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- broadcast "Message 2 for bundle"
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- broadcast "Message 3 for bundle"
+# Alice sends more messages (Terminal 1)
+ely broadcast "Message 1 for bundle"
+ely broadcast "Message 2 for bundle"
+ely broadcast "Message 3 for bundle"
 
 # Alice exports to bundle
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- bundle export /tmp/alice_bundle.bin
+ely bundle export /tmp/alice_bundle.bin
 ```
 
 **Expected:** `✓ Bundle exported: 3+ messages`
 
 ```bash
 # Check bundle info
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- bundle info /tmp/alice_bundle.bin
+ely bundle info /tmp/alice_bundle.bin
 ```
 
 **Expected:**
@@ -180,15 +188,15 @@ Bundle Info:
 ```
 
 ```bash
-# Simulate USB transfer: Bob imports the bundle
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- bundle import /tmp/alice_bundle.bin
+# Simulate USB transfer: Bob imports the bundle (Terminal 2)
+MESHLINK_API_PORT=17081 ely bundle import /tmp/alice_bundle.bin
 ```
 
 **Expected:** `✓ Bundle imported: 3 delivered, 0 forwarded`
 
 ```bash
 # Bob checks inbox
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- inbox 10
+MESHLINK_API_PORT=17081 ely inbox 10
 ```
 
 **Expected:** Bob sees all bundled messages.
@@ -198,8 +206,8 @@ MESHLINK_API_PORT=17081 cargo run --bin ely --release -- inbox 10
 #### 8. Interactive Chat
 
 ```bash
-# Bob starts interactive chat
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- chat $ALICE_ID
+# Bob starts interactive chat (Terminal 2)
+MESHLINK_API_PORT=17081 ely chat $ALICE_ID
 ```
 
 Type messages and press Enter. They appear in Alice's `watch` terminal (from step 3).
@@ -211,11 +219,11 @@ Press `Ctrl+C` to exit chat.
 #### 9. Ping Test
 
 ```bash
-# Alice pings Bob
-MESHLINK_API_PORT=17080 cargo run --bin ely --release -- ping $BOB_ID
+# Alice pings Bob (Terminal 1)
+ely ping $BOB_ID
 
-# Bob pings Alice
-MESHLINK_API_PORT=17081 cargo run --bin ely --release -- ping $ALICE_ID
+# Bob pings Alice (Terminal 2)
+MESHLINK_API_PORT=17081 ely ping $ALICE_ID
 ```
 
 **Expected:**
