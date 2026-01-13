@@ -69,3 +69,7 @@ trap 'echo ""; echo "Stopping nodes..."; killall core 2>/dev/null; exit' INT
 wait
 
 
+
+
+
+
