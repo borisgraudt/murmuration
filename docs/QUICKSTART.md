@@ -1,216 +1,275 @@
-# MeshLink Quick Start Guide
+# Elysium Quick Start Guide
 
-## ⚠️ Важно: Проверьте порты!
+**The Internet Without Internet**
 
-Перед запуском убедитесь, что порты свободны:
+## 🚀 Quick Demo (3 minutes)
+
+### Step 1: Start two nodes
+
+**Terminal 1:**
+```bash
+cd core
+cargo run --bin ely --release -- start 8080
+```
+
+Wait for:
+```
+INFO: Created new node with ID: Qm7xRJ...
+INFO: Listening on: 0.0.0.0:8080
+INFO: Discovery enabled on port 9998
+```
+
+**Terminal 2:**
+```bash
+cd core
+cargo run --bin ely --release -- start 8081 127.0.0.1:8080
+```
+
+Wait for:
+```
+INFO: Connected to peer 127.0.0.1:8080
+```
+
+### Step 2: Send messages
+
+**Terminal 3:**
+```bash
+cd core
+# Send a broadcast message
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- broadcast "Hello Elysium!"
+
+# Check your inbox
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- inbox 10
+
+# Watch live messages (Ctrl+C to exit)
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- watch
+```
+
+### Step 3: Publish content
 
 ```bash
-# Проверить порты
+# Publish some content
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- publish site/index.html "<h1>Hello World</h1>"
+
+# Output: ✓ Content published at: ely://Qm7xRJ.../site/index.html
+
+# Fetch it back
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- fetch ely://Qm7xRJ.../site/index.html
+```
+
+### Step 4: Register names
+
+```bash
+# Register a human-readable name
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name register alice Qm7xRJ...
+
+# Resolve it
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- name resolve alice
+# Output: ✓ alice → Qm7xRJ...
+```
+
+### Step 5: Export/import bundles (USB transfer)
+
+```bash
+# Export messages to bundle
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- bundle export /tmp/messages.bundle
+# Output: ✓ Bundle exported: 3 messages
+
+# Check bundle info
+MESHLINK_API_PORT=17080 cargo run --bin ely --release -- bundle info /tmp/messages.bundle
+
+# Import on another node
+MESHLINK_API_PORT=17081 cargo run --bin ely --release -- bundle import /tmp/messages.bundle
+# Output: ✓ Bundle imported: 3 delivered, 0 forwarded
+```
+
+---
+
+## 📖 All CLI Commands
+
+### Node Management
+
+**Start a node:**
+```bash
+ely start <p2p_port> [peer1] [peer2] ...
+```
+
+**Check status:**
+```bash
+ely status
+```
+
+**List peers:**
+```bash
+ely peers
+```
+
+### Messaging
+
+**Send to specific peer:**
+```bash
+ely send <peer_id> <message>
+```
+
+**Broadcast to all:**
+```bash
+ely broadcast <message>
+```
+
+**Check inbox:**
+```bash
+ely inbox [count]      # Default: 20 messages
+```
+
+**Live watch (stream messages):**
+```bash
+ely watch              # Press Ctrl+C to exit
+```
+
+**Interactive chat:**
+```bash
+ely chat <peer_id|broadcast>
+```
+
+**Ping a peer:**
+```bash
+ely ping <peer_id> [timeout_ms]
+```
+
+### Content Addressing
+
+**Publish content:**
+```bash
+ely publish <path> <content>
+ely publish site/index.html "<h1>Hello</h1>"
+ely publish site/style.css @style.css    # Read from file
+```
+
+**Fetch content:**
+```bash
+ely fetch ely://<node_id>/<path>
+```
+
+### Naming System
+
+**Register name:**
+```bash
+ely name register <name> <node_id>
+```
+
+**Resolve name:**
+```bash
+ely name resolve <name>
+```
+
+### Bundle Protocol (Store-and-Forward)
+
+**Export messages to bundle:**
+```bash
+ely bundle export <output_file>
+```
+
+**Import bundle:**
+```bash
+ely bundle import <input_file>
+```
+
+**Show bundle info:**
+```bash
+ely bundle info <bundle_file>
+```
+
+---
+
+## 🔧 Configuration
+
+### API Port Formula
+
+API port = `9000 + P2P_PORT`
+
+- P2P port 8080 → API port 17080
+- P2P port 8081 → API port 17081
+
+Or set manually:
+```bash
+MESHLINK_API_PORT=17080 ely status
+```
+
+### Environment Variables
+
+```bash
+MESHLINK_API_PORT=17080              # API port
+MESHLINK_DISCOVERY_PORT=9998         # Discovery port (default)
+MESHLINK_NO_DISCOVERY=1              # Disable mDNS discovery
+MESHLINK_MAX_CONNECTIONS=10          # Max peer connections
+MESHLINK_CONNECT_COOLDOWN_MS=5000    # Connection retry cooldown
+```
+
+### Data Directory
+
+Node data is stored in `.ely/node-<port>/`:
+- `identity.json` - Node ID and keys
+- `content.db` - Published content
+- `messages.db` - Message history
+- `names.db` - Name registry
+- `peers.cache` - Discovered peers
+
+---
+
+## 💡 Use Cases
+
+### 1. Offline Messenger
+Run nodes on phones/laptops with WiFi Direct, exchange messages without internet.
+
+### 2. Censorship Bypass
+Use bundles to transfer messages via USB/SD card when network is blocked.
+
+### 3. Delay-Tolerant Networking
+Messages are stored and forwarded when peers come online.
+
+### 4. Content Publishing
+Publish websites/files that propagate through the mesh.
+
+---
+
+## 🐛 Troubleshooting
+
+### Port already in use
+
+```bash
+# Check what's using the port
 lsof -i :8080
-lsof -i :8081
+
+# Kill old nodes
+killall ely core
 ```
 
-Если порты заняты (например, nginx на 8080), используйте другие порты:
+### Nodes not connecting
+
+1. Check logs: `RUST_LOG=info ely start 8080`
+2. Try connecting explicitly: `ely start 8081 127.0.0.1:8080`
+3. Check firewall settings
+
+### API not found
 
 ```bash
-# Вместо 8080/8081 используйте 8082/8083
-cargo run --bin core -- 8082
-cargo run --bin core -- 8083 127.0.0.1:8082
+# CLI tries ports 17070-17100 automatically
+# Or set explicitly:
+MESHLINK_API_PORT=17080 ely status
 ```
 
-## Быстрый старт
+### Messages not showing in inbox
 
-### 1. Запустите первую ноду
+1. Check node is running: `ely status`
+2. Wait for discovery (~5 seconds)
+3. Check API port matches node port
 
-```bash
-cargo run --bin core -- 8082
-```
+---
 
-Дождитесь сообщения:
-```
-INFO: Listening for incoming connections on 0.0.0.0:8082
-```
+## 📚 Next Steps
 
-### 2. Запустите вторую ноду (в другом терминале)
+- Read [PROTOCOL.md](PROTOCOL.md) for wire protocol details
+- Read [ARCHITECTURE.md](ARCHITECTURE.md) for system design
+- See [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for common issues
 
-```bash
-cargo run --bin core -- 8083 127.0.0.1:8082
-```
-
-### 3. Проверьте подключение
-
-Вы должны увидеть в логах:
-- Нода 8082: `INFO: Accepted TCP connection from 127.0.0.1:xxxxx`
-- Нода 8083: `INFO: Connected to peer 127.0.0.1:8082`
-
-## 📊 Визуализация сети
-
-### Запуск визуализации
-
-В отдельном терминале (после запуска нод):
-
-```bash
-cargo run --bin viz
-```
-
-**Управление:**
-- `q` или `Esc` - выход из визуализации
-- Автоматическое обновление ~60 FPS
-
-**Что показывает:**
-- 🔗 **Подключения** - линии между нодами (─│╲╱)
-- 📤📥 **Сообщения** - анимация при отправке/получении
-- 🌐 **Mesh-сообщения** - широковещательные сообщения
-- **Анимации** - пульсация нод (◉) и связей при событиях
-
-**Элементы интерфейса:**
-- **Network Topology** - граф сети с нодами и связями
-- **Status** - статистика:
-  - Количество нод и связей
-  - Номер кадра анимации
-  - Последние события с иконками
-
-**События, которые визуализируются:**
-- ✅ Подключение нод (`connected`) - 🔗
-- ✅ Отключение нод (`disconnected`) - ❌
-- ✅ Отправка сообщений (`message_sent`) - 📤
-- ✅ Получение сообщений (`message_received`) - 📥
-- ✅ Mesh-сообщения (`mesh_message_received`) - 🌐
-
-## 💻 CLI команды
-
-### Запуск CLI
-
-CLI автоматически найдет API порт, или укажите его вручную:
-
-```bash
-# API порт = 9000 + P2P порт
-# Для ноды на 8082 → API на 17082
-# Для ноды на 8083 → API на 17083
-```
-
-### Основные команды
-
-**1. Статус ноды:**
-```bash
-cargo run --bin cli -- status
-```
-Вывод:
-```
-Node Status:
-------------------------------------------------------------
-  Node ID: <uuid>
-  Connected: 1
-  Total peers: 1
-```
-
-**2. Список всех пиров:**
-```bash
-cargo run --bin cli -- peers
-```
-Вывод:
-```
-Peers (1):
-------------------------------------------------------------
-  <peer_id> @ 127.0.0.1:8083 [Connected]
-```
-
-**3. Отправить сообщение конкретному пиру:**
-```bash
-# Сначала узнайте peer_id из команды peers
-cargo run --bin cli -- send <peer_id> "Hello!"
-```
-Вывод:
-```
-✓ Message sent! ID: <message_id>
-```
-
-**4. Отправить сообщение всем (broadcast):**
-```bash
-cargo run --bin cli -- broadcast "Hello everyone!"
-```
-Вывод:
-```
-✓ Message sent! ID: <message_id>
-```
-
-### Указание API порта вручную
-
-Если CLI не находит API порт автоматически:
-
-```bash
-# Для ноды на 8082
-MESHLINK_API_PORT=17082 cargo run --bin cli -- status
-
-# Для ноды на 8083
-MESHLINK_API_PORT=17083 cargo run --bin cli -- status
-```
-
-### Пример полного workflow с CLI
-
-```bash
-# 1. Проверить статус
-cargo run --bin cli -- status
-
-# 2. Посмотреть список пиров
-cargo run --bin cli -- peers
-
-# 3. Скопировать peer_id из вывода peers
-
-# 4. Отправить сообщение конкретному пиру
-cargo run --bin cli -- send <peer_id> "Hello from CLI!"
-
-# 5. Отправить broadcast сообщение
-cargo run --bin cli -- broadcast "Hello everyone!"
-```
-
-## 🚀 Полный пример работы (4 терминала)
-
-**Терминал 1 - Нода 1:**
-```bash
-cargo run --bin core -- 8082
-```
-
-**Терминал 2 - Нода 2:**
-```bash
-cargo run --bin core -- 8083 127.0.0.1:8082
-```
-
-**Терминал 3 - Визуализация:**
-```bash
-cargo run --bin viz
-```
-
-**Терминал 4 - CLI:**
-```bash
-# Проверить статус
-cargo run --bin cli -- status
-
-# Посмотреть пиров
-cargo run --bin cli -- peers
-
-# Отправить сообщение
-cargo run --bin cli -- broadcast "Hello MeshLink!"
-```
-
-В визуализации вы увидите анимацию при отправке сообщений! 🎉
-
-## Troubleshooting
-
-### Порт занят
-
-Если видите ошибку `Address already in use`:
-1. Найдите процесс: `lsof -i :8080`
-2. Остановите его или используйте другой порт
-
-### Handshake failed: early eof
-
-1. Убедитесь, что первая нода запущена и слушает
-2. Проверьте, что порты свободны
-3. Запускайте ноды последовательно (сначала 8082, потом 8083)
-
-### Ноды не подключаются
-
-1. Проверьте логи обеих нод с `RUST_LOG=info`
-2. Убедитесь, что обе ноды видят друг друга
-3. Проверьте firewall настройки
+**Ready to build on Elysium?** The platform is stable. Build messengers, websites, search engines on top of it.

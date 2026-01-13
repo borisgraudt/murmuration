@@ -16,6 +16,18 @@ Not a messenger. Not blockchain. **A new network layer.**
 
 **Use cases:** Protest coordination, emergency communication, bypassing censorship.
 
+### Features
+
+- 🔐 **E2E Encryption** - RSA + AES-GCM
+- 🌐 **P2P Mesh** - Direct connections, no servers
+- 📡 **Auto-Discovery** - mDNS local network discovery
+- 💬 **Messaging** - Direct, broadcast, persistent inbox
+- 📦 **Content Addressing** - Publish/fetch via `ely://` URLs
+- 🏷️ **Naming System** - Human-readable names
+- 💾 **Store-and-Forward** - Bundle protocol for offline transfer
+- 🔄 **Auto-Reconnect** - Resilient connections
+- 📊 **Live Streaming** - Real-time message watch
+
 ### Repo layout
 
 ```text
@@ -43,7 +55,26 @@ cargo run --bin ely --release -- start 8081 127.0.0.1:8080
 ```bash
 # In another terminal
 MESHLINK_API_PORT=17080 cargo run --bin ely -- broadcast "hello mesh"
+MESHLINK_API_PORT=17080 cargo run --bin ely -- inbox 10
 MESHLINK_API_PORT=17080 cargo run --bin ely -- watch
+```
+
+**Publish content:**
+```bash
+MESHLINK_API_PORT=17080 cargo run --bin ely -- publish site/index.html "<h1>Hello World</h1>"
+MESHLINK_API_PORT=17080 cargo run --bin ely -- fetch ely://<node_id>/site/index.html
+```
+
+**Register names:**
+```bash
+MESHLINK_API_PORT=17080 cargo run --bin ely -- name register alice <node_id>
+MESHLINK_API_PORT=17080 cargo run --bin ely -- name resolve alice
+```
+
+**Export/import bundles:**
+```bash
+MESHLINK_API_PORT=17080 cargo run --bin ely -- bundle export /tmp/messages.bundle
+MESHLINK_API_PORT=17081 cargo run --bin ely -- bundle import /tmp/messages.bundle
 ```
 
 **That's it.** No servers, no cloud, no accounts.
@@ -70,9 +101,10 @@ ely start 8080
 
 ### Documentation
 
+- **[Quick Demo](docs/DEMO.md)** — 10-minute full feature test
+- **[Quickstart](docs/QUICKSTART.md)** — getting started guide
 - **[Protocol Spec](docs/PROTOCOL.md)** — wire protocol, addressing, security
 - **[Architecture](docs/ARCHITECTURE.md)** — layers, components, design
-- **[Quickstart](docs/QUICKSTART.md)** — getting started
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** — common issues
 
 ### CI / Pages
