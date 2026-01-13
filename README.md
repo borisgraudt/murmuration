@@ -113,6 +113,7 @@ No `MESHLINK_API_PORT` needed! CLI auto-discovers the running node.
 
 ### Documentation
 
+- **[Installation](INSTALL.md)** — complete install guide
 - **[Quick Demo](docs/DEMO.md)** — 10-minute full feature test
 - **[Quickstart](docs/QUICKSTART.md)** — getting started guide
 - **[Protocol Spec](docs/PROTOCOL.md)** — wire protocol, addressing, security
