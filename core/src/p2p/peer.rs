@@ -340,13 +340,23 @@ impl PeerManager {
             })?;
             let len = u32::from_be_bytes(len_buf) as usize;
 
-            // Increased limit to 1MB to accommodate RSA keys (2048-bit keys can be ~500 bytes when base64 encoded)
-            // Plus JSON overhead, this should be more than enough
-            const MAX_HANDSHAKE_SIZE: usize = 1024 * 1024; // 1MB
-            if len > MAX_HANDSHAKE_SIZE {
+            // Validate length - RSA 2048 encrypted session key + JSON overhead should be < 4KB
+            // Reasonable upper bound: 10KB (allows for future protocol extensions)
+            const MAX_HANDSHAKE_SIZE: usize = 10 * 1024; // 10KB
+            const MIN_HANDSHAKE_SIZE: usize = 10; // Minimum reasonable size
+
+            // Sanity check: if length looks like ASCII or is suspiciously large, something's wrong
+            if len < MIN_HANDSHAKE_SIZE || len > MAX_HANDSHAKE_SIZE {
+                tracing::error!(
+                    "Invalid handshake ack length: {} bytes (raw bytes: {:?}, hex: {:02x}{:02x}{:02x}{:02x})",
+                    len,
+                    len_buf,
+                    len_buf[0], len_buf[1], len_buf[2], len_buf[3]
+                );
                 return Err(MeshError::Peer(format!(
-                    "Handshake ack message too large: {} bytes (max: {})",
-                    len, MAX_HANDSHAKE_SIZE
+                    "Invalid handshake ack length: {} bytes (expected {}..{} bytes). \
+                     This may indicate protocol desynchronization or corrupted data.",
+                    len, MIN_HANDSHAKE_SIZE, MAX_HANDSHAKE_SIZE
                 )));
             }
 
@@ -425,12 +435,21 @@ impl PeerManager {
                 .map_err(|e| MeshError::Peer(format!("Failed to read handshake length: {}", e)))?;
             let len = u32::from_be_bytes(len_buf) as usize;
 
-            // Increased limit to 1MB to accommodate RSA keys
-            const MAX_HANDSHAKE_SIZE: usize = 1024 * 1024; // 1MB
-            if len > MAX_HANDSHAKE_SIZE {
+            // Validate length - RSA public keys + JSON should be < 4KB
+            const MAX_HANDSHAKE_SIZE: usize = 10 * 1024; // 10KB
+            const MIN_HANDSHAKE_SIZE: usize = 10; // Minimum reasonable size
+
+            if len < MIN_HANDSHAKE_SIZE || len > MAX_HANDSHAKE_SIZE {
+                tracing::error!(
+                    "Invalid handshake length: {} bytes (raw bytes: {:?}, hex: {:02x}{:02x}{:02x}{:02x})",
+                    len,
+                    len_buf,
+                    len_buf[0], len_buf[1], len_buf[2], len_buf[3]
+                );
                 return Err(MeshError::Peer(format!(
-                    "Handshake message too large: {} bytes (max: {})",
-                    len, MAX_HANDSHAKE_SIZE
+                    "Invalid handshake length: {} bytes (expected {}..{} bytes). \
+                     This may indicate protocol desynchronization or corrupted data.",
+                    len, MIN_HANDSHAKE_SIZE, MAX_HANDSHAKE_SIZE
                 )));
             }
 

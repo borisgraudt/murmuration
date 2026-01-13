@@ -65,8 +65,6 @@ enum ApiRequest {
     #[serde(rename = "bundle_export")]
     BundleExport {
         output_path: String,
-        #[serde(default)]
-        max_age_hours: Option<u64>,
     },
     #[serde(rename = "bundle_import")]
     BundleImport { input_path: String },
@@ -310,7 +308,7 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 None => Ok(ApiResponse::error(format!("Name not found: {}", name))),
             }
         }
-        ApiRequest::BundleExport { output_path, max_age_hours: _ } => {
+        ApiRequest::BundleExport { output_path } => {
             let limit = 1000; // Max messages per bundle
             match node.export_bundle(limit).await {
                 Ok(bundle) => {
