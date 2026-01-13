@@ -79,34 +79,54 @@ chrome.webNavigation.onCompleted.addListener(
     if (elyUrl) {
       console.log('Detected gateway URL, original ely://:', elyUrl);
       
-      // Try to rewrite URL in address bar
-      // Note: Chrome doesn't allow changing protocol, but we can update title
+      // Update tab title to show ely:// URL
       try {
-        await chrome.scripting.executeScript({
-          target: { tabId: details.tabId },
-          func: (elyUrl, gatewayUrl) => {
-            // Update document title
-            if (document.title === 'Elysium Web Gateway' || !document.title) {
-              document.title = elyUrl;
+        await chrome.tabs.executeScript(details.tabId, {
+          code: `
+            // Update document title immediately
+            document.title = '${elyUrl}';
+            
+            // Update when DOM is ready
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', function() {
+                document.title = '${elyUrl}';
+              });
+            } else {
+              document.title = '${elyUrl}';
             }
             
-            // Try to use History API to show ely:// in URL (limited success)
+            // Try to use History API (limited - browser security)
             try {
-              const state = { ely: elyUrl, gateway: gatewayUrl };
-              history.replaceState(state, elyUrl, gatewayUrl);
+              const state = { ely: '${elyUrl}', gateway: '${url}' };
+              history.replaceState(state, '${elyUrl}', '${url}');
               
-              // Custom event for content script
+              // Dispatch event for content script
               window.dispatchEvent(new CustomEvent('elysium-url', { 
-                detail: { elyUrl, gatewayUrl } 
+                detail: { elyUrl: '${elyUrl}', gatewayUrl: '${url}' } 
               }));
             } catch (e) {
               console.warn('Could not update history:', e);
             }
-          },
-          args: [elyUrl, url]
+          `
         });
       } catch (e) {
-        console.warn('Could not inject script:', e);
+        // Fallback for Manifest V3
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: details.tabId },
+            func: (elyUrl, gatewayUrl) => {
+              document.title = elyUrl;
+              const state = { ely: elyUrl, gateway: gatewayUrl };
+              history.replaceState(state, elyUrl, gatewayUrl);
+              window.dispatchEvent(new CustomEvent('elysium-url', { 
+                detail: { elyUrl, gatewayUrl } 
+              }));
+            },
+            args: [elyUrl, url]
+          });
+        } catch (err) {
+          console.warn('Could not inject script:', err);
+        }
       }
     }
   },
