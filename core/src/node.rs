@@ -384,6 +384,31 @@ impl Node {
             })
         };
 
+        // Start Web Gateway for browser viewing (HTTP server on API port + 1)
+        let web_gateway_handle = {
+            let node = Arc::new(self.clone());
+            tokio::spawn(async move {
+                // Wait a bit for API server to bind and set api_addr
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                
+                // Get API port (may fall back if preferred port was taken)
+                let mut api_port = node.get_api_addr().await.port();
+                
+                // If API port is still 0 or uninitialized, use default
+                if api_port == 0 {
+                    api_port = 17080; // Default fallback
+                    warn!("Web Gateway: API port not yet initialized, using default {}", api_port);
+                }
+                
+                let web_port = api_port + 1;
+                info!("Starting Web Gateway on port {} (API port: {})", web_port, api_port);
+                
+                if let Err(e) = crate::web_gateway::start_web_gateway(node, web_port).await {
+                    error!("Web Gateway error: {}", e);
+                }
+            })
+        };
+
         // Wait for shutdown signal
         self.wait_for_shutdown().await;
 
@@ -401,6 +426,7 @@ impl Node {
         keepalive_handle.abort();
         discovery_handle.abort();
         api_handle.abort();
+        web_gateway_handle.abort();
 
         // Wait a bit for tasks to clean up
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;

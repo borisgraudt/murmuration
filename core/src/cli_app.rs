@@ -195,6 +195,17 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 }
             }
         }
+        "install-handler" => {
+            crate::url_handler::install_url_handler()?;
+        }
+        "handle-url" => {
+            if args.len() < 3 {
+                eprintln!("{}", format!("Usage: {} handle-url <ely://...>", bin).yellow());
+                return Ok(());
+            }
+            let url = args[2].clone();
+            crate::url_handler::handle_url(url)?;
+        }
         _ => {
             eprintln!("{} Unknown command: {}", "✗".red().bold(), command.red());
             print_usage(&bin);
@@ -259,6 +270,14 @@ fn print_usage(bin: &str) {
     println!(
         "  {} <url>                     Fetch content from mesh (ely://node_id/path)",
         "fetch".cyan()
+    );
+    println!(
+        "  {}                            Install OS-level ely:// URL handler",
+        "install-handler".cyan()
+    );
+    println!(
+        "  {} <ely://url>               Open ely:// URL in browser via Web Gateway",
+        "handle-url".cyan()
     );
     println!(
         "  {} register <name> <id>     Register a human-readable name",

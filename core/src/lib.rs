@@ -17,6 +17,8 @@ pub mod node;
 pub mod p2p;
 mod peer_store;
 pub mod utils;
+pub mod url_handler;
+pub mod web_gateway;
 
 pub use config::Config;
 pub use error::{MeshError, Result};

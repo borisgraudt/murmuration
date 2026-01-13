@@ -43,14 +43,22 @@ bytes = "1.5"
 rsa = { version = "0.9", features = ["sha2"] }
 aes-gcm = { version = "0.10", features = ["aes"] }
 sha2 = "0.10"
-base64 = "0.21"
+base64 = "0.22"
 bs58 = "0.5"
 colored = "2.1"
 socket2 = "0.5"
 sled = "0.34"
+# HTTP for Web Gateway
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+http = "1.0"
+urlencoding = "2.1"
 # Post-Quantum Cryptography - using pqcrypto-kyber 0.8.1 (more stable)
 pqcrypto-kyber = { version = "0.8", optional = true }
 pqcrypto-traits = { version = "0.3", optional = true }
+# Windows registry for URL handler
+winreg = { version = "0.50", optional = true }
 
 [dev-dependencies]
 tempfile = "3.8"
@@ -58,3 +66,5 @@ tempfile = "3.8"
 [features]
 default = []
 pqc = ["pqcrypto-kyber", "pqcrypto-traits"]
+# Windows-specific features
+windows = ["winreg"]
