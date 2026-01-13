@@ -558,9 +558,9 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
         // Run in background: spawn new process and detach
         let mut cmd = std::process::Command::new(std::env::current_exe()?);
         
-        // Rebuild args without daemon flag
-        let mut new_args: Vec<String> = vec!["ely".to_string(), "start".to_string()];
-        new_args.extend(config_args.iter().skip(1).cloned()); // Skip "core", keep rest
+        // Rebuild args: ["start", "<port>", ...] (without daemon flag and without "core"/"ely")
+        let mut new_args: Vec<String> = vec!["start".to_string()];
+        new_args.extend(config_args.iter().skip(1).cloned()); // Skip "core", keep rest (port, peers, etc)
         cmd.args(&new_args);
         
         // Redirect stdout/stderr to log file
@@ -574,9 +574,39 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
         cmd.stdout(file.try_clone()?);
         cmd.stderr(file);
         
-        // Spawn and detach (don't wait for child)
-        let child = cmd.spawn()?;
+        // Note: Process will continue running after parent exits on Unix
+        // We don't wait for it, so it becomes detached automatically
+        
+        // Spawn process in background
+        let mut child = cmd.spawn()?;
         let pid = child.id();
+        
+        // Give it a moment to start and initialize
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        
+        // Check if process is still running
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // Process exited immediately - read log file to show error
+                let error_msg = if let Ok(log_content) = std::fs::read_to_string(&log_file) {
+                    format!("Node exited. Last log entries:\n{}", 
+                        log_content.lines().rev().take(10).collect::<Vec<_>>().join("\n"))
+                } else {
+                    format!("Node exited with status: {}", status)
+                };
+                return Err(anyhow::anyhow!("Failed to start node: {}", error_msg));
+            }
+            Ok(None) => {
+                // Process is still running - success!
+            }
+            Err(e) => {
+                // Can't check status - assume it's running
+                tracing::debug!("Could not check child process status: {} (assuming running)", e);
+            }
+        }
+        
+        // Don't wait for child - let it run in background
+        // The process will continue even after this function returns
         
         println!(
             "{} Node started in background (PID: {})",
@@ -592,6 +622,10 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
             "{} Stop with: kill {}",
             "→".cyan(),
             pid
+        );
+        println!(
+            "{} Wait a moment for node to initialize before running commands",
+            "→".dimmed()
         );
         
         Ok(())
