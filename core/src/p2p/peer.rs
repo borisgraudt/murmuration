@@ -347,11 +347,27 @@ impl PeerManager {
 
             // Sanity check: if length looks like ASCII or is suspiciously large, something's wrong
             if !(MIN_HANDSHAKE_SIZE..=MAX_HANDSHAKE_SIZE).contains(&len) {
+                // Check if we received HTTP response instead of handshake
+                let first_bytes = &len_buf[..4.min(len_buf.len())];
+                let is_http = first_bytes == b"HTTP" || 
+                              (first_bytes.len() >= 3 && &first_bytes[0..3] == b"GET") ||
+                              (first_bytes.len() >= 4 && &first_bytes[0..4] == b"POST");
+                
+                if is_http {
+                    tracing::error!(
+                        "Received HTTP response instead of handshake (raw bytes: {:?}, hex: {:02x}{:02x}{:02x}{:02x})",
+                        first_bytes, len_buf[0], len_buf[1], len_buf[2], len_buf[3]
+                    );
+                    return Err(MeshError::Peer(format!(
+                        "Connected to HTTP port (Web Gateway/API) instead of P2P port. \
+                         Make sure you're connecting to the P2P port (e.g., 8080), not the API port (e.g., 17080) or Gateway port (e.g., 17081). \
+                         Usage: ely start <p2p_port> [peer_ip:p2p_port]"
+                    )));
+                }
+                
                 tracing::error!(
                     "Invalid handshake ack length: {} bytes (raw bytes: {:?}, hex: {:02x}{:02x}{:02x}{:02x})",
-                    len,
-                    len_buf,
-                    len_buf[0], len_buf[1], len_buf[2], len_buf[3]
+                    len, first_bytes, len_buf[0], len_buf[1], len_buf[2], len_buf[3]
                 );
                 return Err(MeshError::Peer(format!(
                     "Invalid handshake ack length: {} bytes (expected {}..{} bytes). \
