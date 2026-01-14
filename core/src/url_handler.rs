@@ -115,12 +115,14 @@ pub fn handle_url(url: String) -> Result<()> {
     let web_port = api_port + 1;
     
     // Use new clean URL format: /e/<base64_encoded>
+    // Try ely.local first (cleaner), fallback to localhost
     use base64::{Engine as _, engine::general_purpose};
     let encoded = general_purpose::URL_SAFE_NO_PAD.encode(url.as_bytes());
-    let gateway_url = format!("http://localhost:{}/e/{}", web_port, encoded);
+    // Try ely.local first (cleaner), fallback to localhost if not configured
+    let gateway_url = format!("http://ely.local:{}/e/{}", web_port, encoded);
     
-    // Note: Browser will show /e/... in address bar initially,
-    // but JavaScript will rewrite it to show ely:// when possible
+    // Note: If ely.local is not in /etc/hosts, browser will show error
+    // User should add "127.0.0.1 ely.local" to /etc/hosts for cleaner URLs
 
     println!("{} Opening ely:// URL in browser...", "🌐".cyan().bold());
     println!("  URL: {}", url.yellow());

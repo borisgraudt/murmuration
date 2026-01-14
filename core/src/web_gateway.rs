@@ -14,6 +14,7 @@ use tracing::{error, info};
 use base64::{Engine as _, engine::general_purpose};
 
 pub async fn start_web_gateway(node: Arc<Node>, port: u16) -> Result<()> {
+    // Bind to both localhost and ely.local (if configured in /etc/hosts)
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()
         .map_err(|e| crate::error::MeshError::Io(std::io::Error::new(
             std::io::ErrorKind::AddrNotAvailable,
@@ -24,6 +25,7 @@ pub async fn start_web_gateway(node: Arc<Node>, port: u16) -> Result<()> {
         .map_err(crate::error::MeshError::Io)?;
     
     info!("Web Gateway started on http://{}", addr);
+    info!("  Also available at: http://ely.local:{} (if configured in /etc/hosts)", port);
     
     loop {
         match listener.accept().await {
@@ -75,10 +77,19 @@ async fn handle_request(
             let url = extract_url_from_query(query);
             
             if url.is_empty() {
-                return Ok(Response::builder()
+                return match Response::builder()
                     .status(StatusCode::BAD_REQUEST)
                     .body(Full::new(bytes::Bytes::from("Missing ?url parameter")))
-                    .unwrap());
+                {
+                    Ok(resp) => Ok(resp),
+                    Err(e) => {
+                        error!("Failed to build response: {}", e);
+                        Ok(Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(Full::new(bytes::Bytes::from("Internal server error")))
+                            .unwrap_or_else(|_| Response::new(Full::new(bytes::Bytes::new()))))
+                    }
+                };
             }
             
             handle_content_request(&url, node).await
@@ -110,17 +121,36 @@ async fn handle_request(
     <p><small>Gateway is running. Your node must be online to fetch content from the mesh network.</small></p>
 </body>
 </html>"#;
-            Ok(Response::builder()
+            match Response::builder()
                 .header("Content-Type", "text/html; charset=utf-8")
                 .body(Full::new(bytes::Bytes::from(html)))
-                .unwrap())
+            {
+                Ok(resp) => Ok(resp),
+                Err(e) => {
+                    error!("Failed to build response: {}", e);
+                    // Return a simple error response
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Full::new(bytes::Bytes::from("Internal server error")))
+                        .unwrap_or_else(|_| Response::new(Full::new(bytes::Bytes::new()))))
+                }
+            }
         }
         _ => {
-            Ok(Response::builder()
+            match Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "text/plain")
                 .body(Full::new(bytes::Bytes::from("Not found")))
-                .unwrap())
+            {
+                Ok(resp) => Ok(resp),
+                Err(e) => {
+                    error!("Failed to build response: {}", e);
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Full::new(bytes::Bytes::from("Internal server error")))
+                        .unwrap_or_else(|_| Response::new(Full::new(bytes::Bytes::new()))))
+                }
+            }
         }
     }
 }
@@ -154,33 +184,60 @@ async fn handle_content_request(
                 content
             };
             
-            Ok(Response::builder()
+            match Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", content_type)
                 .header("X-Elysium-URL", url) // Custom header with original URL
                 .body(Full::new(bytes::Bytes::from(body_bytes)))
-                .unwrap())
+            {
+                Ok(resp) => Ok(resp),
+                Err(e) => {
+                    error!("Failed to build response: {}", e);
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Full::new(bytes::Bytes::from("Internal server error")))
+                        .unwrap_or_else(|_| Response::new(Full::new(bytes::Bytes::new()))))
+                }
+            }
         }
         Ok(None) => {
-            Ok(Response::builder()
+            match Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .header("Content-Type", "text/plain")
                 .body(Full::new(bytes::Bytes::from(format!(
                     "Content not found: {}",
                     url
                 ))))
-                .unwrap())
+            {
+                Ok(resp) => Ok(resp),
+                Err(e) => {
+                    error!("Failed to build response: {}", e);
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Full::new(bytes::Bytes::from("Internal server error")))
+                        .unwrap_or_else(|_| Response::new(Full::new(bytes::Bytes::new()))))
+                }
+            }
         }
         Err(e) => {
             error!("Error fetching content {}: {}", url, e);
-            Ok(Response::builder()
+            match Response::builder()
                 .status(StatusCode::INTERNAL_SERVER_ERROR)
                 .header("Content-Type", "text/plain")
                 .body(Full::new(bytes::Bytes::from(format!(
                     "Error fetching content: {}",
                     e
                 ))))
-                .unwrap())
+            {
+                Ok(resp) => Ok(resp),
+                Err(build_err) => {
+                    error!("Failed to build error response: {}", build_err);
+                    Ok(Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Full::new(bytes::Bytes::from("Internal server error")))
+                        .unwrap_or_else(|_| Response::new(Full::new(bytes::Bytes::new()))))
+                }
+            }
         }
     }
 }

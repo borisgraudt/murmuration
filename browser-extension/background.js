@@ -31,7 +31,10 @@ function decodeElyUrl(encoded) {
 async function elyToGatewayUrl(elyUrl) {
   const port = await getWebPort();
   const encoded = encodeElyUrl(elyUrl);
-  return `http://localhost:${port}/e/${encoded}`;
+  // Try to use ely.local first (cleaner URL), fallback to localhost
+  // User needs to add "127.0.0.1 ely.local" to /etc/hosts
+  // For now, check if ely.local is available, otherwise use localhost
+  return `http://ely.local:${port}/e/${encoded}`;
 }
 
 // Convert Web Gateway URL back to ely://
@@ -130,7 +133,7 @@ chrome.webNavigation.onCompleted.addListener(
       }
     }
   },
-  { url: [{ hostEquals: 'localhost' }] }
+  { url: [{ hostMatches: '(localhost|ely\\.local)' }] }
 );
 
 // Handle clicks on ely:// links

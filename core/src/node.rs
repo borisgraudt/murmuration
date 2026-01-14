@@ -150,7 +150,9 @@ impl Node {
         let initial_api_addr: SocketAddr = config.api_addr.unwrap_or_else(|| {
             format!("127.0.0.1:{}", default_api_port)
                 .parse()
-                .expect("valid api addr")
+                .unwrap_or_else(|e| {
+                    panic!("Invalid default API address {}: {}", default_api_port, e);
+                })
         });
         let discovery_port = config.discovery_port;
         let max_connect_in_flight = config.max_connect_in_flight.max(1);
