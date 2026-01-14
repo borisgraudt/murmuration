@@ -932,6 +932,7 @@ fn publish_directory(base_path: &str, dir_path: &str, port_override: Option<u16>
         dir: &Path,
         base_dir: &Path,
         base_path: &str,
+        port_override: Option<u16>,
         files_published: &mut usize,
         errors: &mut usize,
     ) -> anyhow::Result<()> {
@@ -940,7 +941,7 @@ fn publish_directory(base_path: &str, dir_path: &str, port_override: Option<u16>
             let path = entry.path();
 
             if path.is_dir() {
-                walk_dir(&path, base_dir, base_path, files_published, errors)?;
+                walk_dir(&path, base_dir, base_path, port_override, files_published, errors)?;
             } else if path.is_file() {
                 // Get relative path from base directory
                 let relative_path = path.strip_prefix(base_dir).unwrap_or(path.as_path());
@@ -983,7 +984,7 @@ fn publish_directory(base_path: &str, dir_path: &str, port_override: Option<u16>
         Ok(())
     }
 
-    walk_dir(dir, dir, base_path, &mut files_published, &mut errors)?;
+    walk_dir(dir, dir, base_path, port_override, &mut files_published, &mut errors)?;
 
     println!(
         "\n{} Published {} files{}",
