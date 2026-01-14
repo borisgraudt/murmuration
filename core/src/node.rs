@@ -129,13 +129,26 @@ pub struct Node {
 impl Node {
     /// Create a new node
     pub fn new(mut config: Config) -> Result<Self> {
+        // Ensure each node has a unique data directory based on port
         let data_dir = config.data_dir.clone().unwrap_or_else(|| {
             std::path::PathBuf::from(format!(".ely/node-{}", config.listen_addr.port()))
         });
+        
+        // Warn if data_dir is explicitly set and might conflict with another node
+        if config.data_dir.is_some() {
+            warn!(
+                "Using explicit data directory: {}. Make sure each node uses a unique directory!",
+                data_dir.display()
+            );
+        }
+        
         config.data_dir = Some(data_dir.clone());
 
         let ident = identity::load_or_create(&data_dir)?;
         let id = ident.node_id;
+        
+        // Log data directory for debugging
+        info!("Node data directory: {}", data_dir.display());
 
         let peer_manager = PeerManager::new(id.clone(), config.listen_addr.port());
         let event_emitter = EventEmitter::new(id.clone());

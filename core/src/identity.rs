@@ -67,6 +67,16 @@ pub fn load_or_create(data_dir: &Path) -> Result<NodeIdentity> {
 
         let private_key = EncryptionManager::decode_private_key_pkcs8(&pkcs8)?;
         let encryption = EncryptionManager::from_private_key(private_key)?;
+        
+        // Verify that the stored node_id matches the derived one
+        let derived_node_id = derive_node_id(&encryption)?;
+        if derived_node_id != parsed.node_id {
+            return Err(MeshError::Config(format!(
+                "Identity file node_id mismatch! Stored: {}, Derived: {}. \
+                 This may indicate corrupted identity file. Delete {} to regenerate.",
+                parsed.node_id, derived_node_id, path.display()
+            )));
+        }
 
         return Ok(NodeIdentity {
             node_id: parsed.node_id,

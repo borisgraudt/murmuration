@@ -293,7 +293,7 @@ fn print_usage(bin: &str) {
         "peers".cyan()
     );
     println!(
-        "  {}                        Show node status",
+        "  {}                        Show node status (use MESHLINK_API_PORT=<port> for multi-node)",
         "status".cyan()
     );
     println!(
@@ -808,6 +808,15 @@ fn list_peers() -> anyhow::Result<()> {
 
 fn show_status() -> anyhow::Result<()> {
     let api_port = get_api_port();
+    
+    // Warn if using default port with multiple nodes
+    if std::env::var("MESHLINK_API_PORT").is_err() {
+        eprintln!(
+            "{} Using default API port {}. If running multiple nodes, set MESHLINK_API_PORT=<port> (9000 + P2P port)",
+            "ℹ".cyan(),
+            api_port
+        );
+    }
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
