@@ -305,7 +305,7 @@ fn print_usage(bin: &str) {
         "watch".cyan()
     );
     println!(
-        "  {} <path> <content>         Publish content to mesh (use @file or @dir)",
+        "  {} <path> <content|@file|@dir>  Publish content to mesh",
         "publish".cyan()
     );
     println!(
