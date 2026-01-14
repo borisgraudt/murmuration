@@ -73,15 +73,15 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             send_message(None, message, port)?;
         }
         "ping" => {
-            if args.len() < 3 {
+            let (port, remaining) = extract_port_flag(&args[2..]);
+            if remaining.is_empty() {
                 eprintln!(
                     "{}",
-                    format!("Usage: {} ping <peer_id> [timeout_ms]", bin).yellow()
+                    format!("Usage: {} ping <peer_id> [timeout_ms] [--port <api_port>]", bin).yellow()
                 );
                 return Ok(());
             }
-            let peer_id = normalize_peer_id(&args[2]).to_string();
-            let (port, remaining) = extract_port_flag(&args[2..]);
+            let peer_id = normalize_peer_id(&remaining[0]).to_string();
             let timeout_ms = remaining
                 .get(1)
                 .and_then(|s| s.parse::<u64>().ok())
