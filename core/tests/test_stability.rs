@@ -1,6 +1,6 @@
-use base64::Engine;
-/// Stability tests - ensure no panics, proper error handling, timeouts
 #![allow(clippy::field_reassign_with_default)]
+/// Stability tests - ensure no panics, proper error handling, timeouts
+use base64::Engine;
 use meshlink_core::config::Config;
 use meshlink_core::node::Node;
 use std::path::PathBuf;

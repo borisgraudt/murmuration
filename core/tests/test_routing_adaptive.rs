@@ -27,7 +27,7 @@ async fn test_route_history_tracking() {
 
     // The route history should be updated
     // (We can't directly access it, but we can verify through scoring)
-    assert!(true, "Route history tracking should work");
+    // Route history tracking works (no panic means success)
 }
 
 #[tokio::test]
