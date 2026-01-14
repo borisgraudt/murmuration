@@ -456,8 +456,17 @@ fn get_api_port(port_override: Option<u16>) -> u16 {
 }
 
 fn send_message(peer_id: Option<String>, message: String, port_override: Option<u16>) -> anyhow::Result<()> {
-    let api_port = get_api_port(port_override);
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
@@ -498,8 +507,17 @@ fn send_message(peer_id: Option<String>, message: String, port_override: Option<
 }
 
 fn inbox(limit: usize, port_override: Option<u16>) -> anyhow::Result<()> {
-    let api_port = get_api_port(port_override);
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
@@ -608,6 +626,15 @@ fn print_inbox_message(m: &serde_json::Value) {
 }
 
 fn chat(target: String, port_override: Option<u16>) -> anyhow::Result<()> {
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
     println!("{} {}", "Chat target:".bright_white().bold(), target.cyan());
     println!(
         "{}",
@@ -757,8 +784,17 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
 }
 
 fn ping(peer_id: String, timeout_ms: u64, port_override: Option<u16>) -> anyhow::Result<()> {
-    let api_port = get_api_port(port_override);
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
@@ -797,8 +833,17 @@ fn ping(peer_id: String, timeout_ms: u64, port_override: Option<u16>) -> anyhow:
 }
 
 fn list_peers(port_override: Option<u16>) -> anyhow::Result<()> {
-    let api_port = get_api_port(port_override);
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
@@ -851,17 +896,21 @@ fn list_peers(port_override: Option<u16>) -> anyhow::Result<()> {
 }
 
 fn show_status(port_override: Option<u16>) -> anyhow::Result<()> {
-    let api_port = get_api_port(port_override);
-    
-    // Show which API port we're connecting to (helpful for debugging)
-    if let Some(port) = port_override {
+    // If --port is specified, use it directly without fallback
+    let api_port = if let Some(port) = port_override {
         eprintln!(
             "{} Connecting to API on port {} {}",
             "✓".green(),
             port.to_string().cyan(),
             "(specified with --port)".dimmed()
         );
-    } else if std::env::var("MESHLINK_API_PORT").is_err() {
+        port
+    } else {
+        get_api_port(None)
+    };
+    
+    // Show which API port we're connecting to (helpful for debugging)
+    if port_override.is_none() && std::env::var("MESHLINK_API_PORT").is_err() {
         // Only show if using auto-detection
         eprintln!(
             "{} Connecting to API on port {} (use --port <api_port> to specify different port)",
@@ -869,7 +918,9 @@ fn show_status(port_override: Option<u16>) -> anyhow::Result<()> {
             api_port
         );
     }
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
@@ -1018,8 +1069,17 @@ fn publish_directory(base_path: &str, dir_path: &str, port_override: Option<u16>
 }
 
 fn publish(path: String, content_arg: String, port_override: Option<u16>) -> anyhow::Result<()> {
-    let api_port = get_api_port(port_override);
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
@@ -1071,8 +1131,17 @@ fn publish(path: String, content_arg: String, port_override: Option<u16>) -> any
 }
 
 fn fetch(url: String, port_override: Option<u16>) -> anyhow::Result<()> {
-    let api_port = get_api_port(port_override);
-    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
+    let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+        .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
