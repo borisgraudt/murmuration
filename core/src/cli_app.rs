@@ -39,35 +39,38 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             start_node(&args[2..], daemon)?;
         }
         "chat" => {
-            if args.len() < 3 {
+            let (port, remaining) = extract_port_flag(&args[2..]);
+            if remaining.is_empty() {
                 eprintln!(
                     "{}",
-                    format!("Usage: {} chat <peer_id|broadcast>", bin).yellow()
+                    format!("Usage: {} chat <peer_id|broadcast> [--port <api_port>]", bin).yellow()
                 );
                 return Ok(());
             }
-            let target = args[2].clone();
-            chat(target)?;
+            let target = remaining[0].clone();
+            chat(target, port)?;
         }
         "send" => {
-            if args.len() < 4 {
+            let (port, remaining) = extract_port_flag(&args[2..]);
+            if remaining.len() < 2 {
                 eprintln!(
                     "{}",
-                    format!("Usage: {} send <peer_id> <message>", bin).yellow()
+                    format!("Usage: {} send <peer_id> <message> [--port <api_port>]", bin).yellow()
                 );
                 return Ok(());
             }
-            let peer_id = Some(normalize_peer_id(&args[2]).to_string());
-            let message = args[3..].join(" ");
-            send_message(peer_id, message)?;
+            let peer_id = Some(normalize_peer_id(&remaining[0]).to_string());
+            let message = remaining[1..].join(" ");
+            send_message(peer_id, message, port)?;
         }
         "broadcast" => {
-            if args.len() < 3 {
-                eprintln!("{}", format!("Usage: {} broadcast <message>", bin).yellow());
+            let (port, remaining) = extract_port_flag(&args[2..]);
+            if remaining.is_empty() {
+                eprintln!("{}", format!("Usage: {} broadcast <message> [--port <api_port>]", bin).yellow());
                 return Ok(());
             }
-            let message = args[2..].join(" ");
-            send_message(None, message)?;
+            let message = remaining.join(" ");
+            send_message(None, message, port)?;
         }
         "ping" => {
             if args.len() < 3 {
@@ -533,10 +536,10 @@ fn inbox(limit: usize, port_override: Option<u16>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn watch() -> anyhow::Result<()> {
+fn watch(port_override: Option<u16>) -> anyhow::Result<()> {
     let mut since: u64 = 0;
     loop {
-        let api_port = get_api_port();
+        let api_port = get_api_port(port_override);
         let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
         stream.set_read_timeout(Some(Duration::from_secs(35)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
@@ -604,7 +607,7 @@ fn print_inbox_message(m: &serde_json::Value) {
     println!("  {}", preview);
 }
 
-fn chat(target: String) -> anyhow::Result<()> {
+fn chat(target: String, port_override: Option<u16>) -> anyhow::Result<()> {
     println!("{} {}", "Chat target:".bright_white().bold(), target.cyan());
     println!(
         "{}",
