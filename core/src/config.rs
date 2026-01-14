@@ -47,6 +47,9 @@ pub struct Config {
     /// API server address for local clients (defaults to 127.0.0.1:(9000 + listen_port))
     pub api_addr: Option<SocketAddr>,
 
+    /// Web Gateway port (defaults to API port + 1)
+    pub gateway_port: Option<u16>,
+
     /// UDP discovery port (should be same across nodes on the same LAN)
     pub discovery_port: u16,
 
@@ -80,6 +83,7 @@ impl Default for Config {
             ai_debug: false,
             data_dir: None,
             api_addr: None,
+            gateway_port: None,
             discovery_port: DEFAULT_DISCOVERY_PORT,
             enable_discovery: true,
             max_connections: DEFAULT_MAX_CONNECTIONS,
@@ -95,7 +99,7 @@ impl Config {
     pub fn from_args(args: &[String]) -> Result<Self> {
         if args.len() < 2 {
             return Err(MeshError::Config(format!(
-                "Usage: {} <port> [peer1] [peer2] ... [--ai-debug] [--data-dir <path>] [--api-port <port>] [--discovery-port <port>] [--no-discovery] [--max-connections <n>] [--connect-cooldown-ms <ms>] [--max-connect-in-flight <n>] [--connect-backoff-max-ms <ms>]",
+                "Usage: {} <port> [peer1] [peer2] ... [--ai-debug] [--data-dir <path>] [--api-port <port>] [--gateway <port>] [--discovery-port <port>] [--no-discovery] [--max-connections <n>] [--connect-cooldown-ms <ms>] [--max-connect-in-flight <n>] [--connect-backoff-max-ms <ms>]",
                 args.first().unwrap_or(&"meshlink".to_string())
             )));
         }
@@ -113,6 +117,7 @@ impl Config {
         let mut ai_debug = false;
         let mut data_dir: Option<PathBuf> = None;
         let mut api_port: Option<u16> = None;
+        let mut gateway_port = None::<u16>;
         let mut discovery_port: Option<u16> = None;
         let mut enable_discovery = true;
         let mut max_connections: Option<usize> = None;
@@ -259,6 +264,7 @@ impl Config {
             ai_debug,
             data_dir,
             api_addr,
+            gateway_port,
             discovery_port: discovery_port.unwrap_or(DEFAULT_DISCOVERY_PORT),
             enable_discovery,
             max_connections: max_connections.unwrap_or(DEFAULT_MAX_CONNECTIONS),

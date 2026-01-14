@@ -104,13 +104,27 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             if args.len() < 4 {
                 eprintln!(
                     "{}",
-                    format!("Usage: {} publish <path> <content|@file>", bin).yellow()
+                    format!("Usage: {} publish <path> <content|@file|@dir>", bin).yellow()
                 );
                 return Ok(());
             }
             let path = args[2].clone();
             let content_arg = args[3..].join(" ");
-            publish(path, content_arg)?;
+
+            // Check if it's a directory
+            if let Some(dir_path) = content_arg.strip_prefix('@') {
+                if let Ok(metadata) = std::fs::metadata(dir_path) {
+                    if metadata.is_dir() {
+                        publish_directory(&path, dir_path)?;
+                    } else {
+                        publish(path, content_arg)?;
+                    }
+                } else {
+                    publish(path, content_arg)?;
+                }
+            } else {
+                publish(path, content_arg)?;
+            }
         }
         "fetch" => {
             if args.len() < 3 {
@@ -291,7 +305,7 @@ fn print_usage(bin: &str) {
         "watch".cyan()
     );
     println!(
-        "  {} <path> <content>         Publish content to mesh (use @file to read from file)",
+        "  {} <path> <content>         Publish content to mesh (use @file or @dir)",
         "publish".cyan()
     );
     println!(
@@ -846,6 +860,97 @@ fn show_status() -> anyhow::Result<()> {
         eprintln!("{} Error: {}", "✗".red().bold(), error.red());
         std::process::exit(1);
     }
+
+    Ok(())
+}
+
+/// Recursively publish all files from a directory
+fn publish_directory(base_path: &str, dir_path: &str) -> anyhow::Result<()> {
+    use std::fs;
+    use std::path::Path;
+
+    let dir = Path::new(dir_path);
+    if !dir.is_dir() {
+        return Err(anyhow::anyhow!("Not a directory: {}", dir_path));
+    }
+
+    println!(
+        "{} Publishing directory: {}",
+        "📁".cyan().bold(),
+        dir_path.yellow()
+    );
+
+    let mut files_published = 0;
+    let mut errors = 0;
+
+    // Walk directory recursively
+    fn walk_dir(
+        dir: &Path,
+        base_dir: &Path,
+        base_path: &str,
+        files_published: &mut usize,
+        errors: &mut usize,
+    ) -> anyhow::Result<()> {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                walk_dir(&path, base_dir, base_path, files_published, errors)?;
+            } else if path.is_file() {
+                // Get relative path from base directory
+                let relative_path = path.strip_prefix(base_dir).unwrap_or(path.as_path());
+
+                // Construct publish path
+                let publish_path = if base_path.ends_with('/') {
+                    format!("{}{}", base_path, relative_path.display())
+                } else {
+                    format!("{}/{}", base_path, relative_path.display())
+                };
+
+                // Normalize path separators
+                let publish_path = publish_path.replace('\\', "/");
+
+                match fs::read(&path) {
+                    Ok(content) => {
+                        match publish(publish_path.clone(), format!("@{}", path.display())) {
+                            Ok(_) => {
+                                *files_published += 1;
+                                println!(
+                                    "  {} {} ({} bytes)",
+                                    "✓".green(),
+                                    publish_path.yellow(),
+                                    content.len()
+                                );
+                            }
+                            Err(e) => {
+                                *errors += 1;
+                                eprintln!("  {} {}: {}", "✗".red(), publish_path.yellow(), e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        *errors += 1;
+                        eprintln!("  {} Failed to read {}: {}", "✗".red(), path.display(), e);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    walk_dir(dir, dir, base_path, &mut files_published, &mut errors)?;
+
+    println!(
+        "\n{} Published {} files{}",
+        "✓".green().bold(),
+        files_published,
+        if errors > 0 {
+            format!(" ({} errors)", errors.to_string().red())
+        } else {
+            String::new()
+        }
+    );
 
     Ok(())
 }

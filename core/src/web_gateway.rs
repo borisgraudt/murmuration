@@ -59,7 +59,23 @@ async fn handle_request(
 ) -> std::result::Result<Response<Full<bytes::Bytes>>, hyper::Error> {
     let path = req.uri().path();
 
-    // Support both old /view?url=... and new /e/... format
+    // Support /ely/<node_id>/<path> format (clean, readable URLs)
+    if path.starts_with("/ely/") {
+        let ely_path = path.strip_prefix("/ely/").unwrap_or("");
+        // Parse: <node_id>/<path>
+        if let Some(slash_pos) = ely_path.find('/') {
+            let node_id = &ely_path[..slash_pos];
+            let content_path = &ely_path[slash_pos + 1..];
+            let url = format!("ely://{}/{}", node_id, content_path);
+            return handle_content_request(&url, node).await;
+        } else {
+            // Just node_id, no path - treat as root
+            let url = format!("ely://{}/", ely_path);
+            return handle_content_request(&url, node).await;
+        }
+    }
+
+    // Support /e/<encoded_ely_url> format (base64 encoded, for compatibility)
     if path.starts_with("/e/") {
         // New format: /e/<encoded_ely_url>
         let encoded = path.strip_prefix("/e/").unwrap_or("");
@@ -114,11 +130,14 @@ async fn handle_request(
     <h1>🌐 Elysium Web Gateway</h1>
     <p>View <code>ely://</code> content in your browser.</p>
     <h2>Usage</h2>
-    <p>Open ely:// URLs like:</p>
+    <p>Open ely:// URLs using clean format:</p>
+    <p><code><a href="/ely/node_id/path">/ely/&lt;node_id&gt;/&lt;path&gt;</a></code></p>
+    <p>Or legacy formats:</p>
     <p><code><a href="/view?url=ely://node_id/path">/view?url=ely://node_id/path</a></code></p>
+    <p><code>/e/&lt;base64_encoded_url&gt;</code></p>
     <h2>Example</h2>
     <p>If you published content at <code>ely://Qm7xRJ.../site/index.html</code>, visit:</p>
-    <p><code><a href="/view?url=ely://Qm7xRJ.../site/index.html">/view?url=ely://Qm7xRJ.../site/index.html</a></code></p>
+    <p><code><a href="/ely/Qm7xRJ.../site/index.html">/ely/Qm7xRJ.../site/index.html</a></code></p>
     <hr>
     <p><small>Gateway is running. Your node must be online to fetch content from the mesh network.</small></p>
 </body>

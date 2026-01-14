@@ -399,23 +399,25 @@ impl Node {
                 // Wait a bit for API server to bind and set api_addr
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-                // Get API port (may fall back if preferred port was taken)
-                let mut api_port = node.get_api_addr().await.port();
+                // Determine gateway port: use config if set, otherwise API port + 1
+                let web_port = if let Some(port) = node.config.gateway_port {
+                    port
+                } else {
+                    let mut api_port = node.get_api_addr().await.port();
 
-                // If API port is still 0 or uninitialized, use default
-                if api_port == 0 {
-                    api_port = 17080; // Default fallback
-                    warn!(
-                        "Web Gateway: API port not yet initialized, using default {}",
-                        api_port
-                    );
-                }
+                    // If API port is still 0 or uninitialized, use default
+                    if api_port == 0 {
+                        api_port = 17080; // Default fallback
+                        warn!(
+                            "Web Gateway: API port not yet initialized, using default {}",
+                            api_port
+                        );
+                    }
 
-                let web_port = api_port + 1;
-                info!(
-                    "Starting Web Gateway on port {} (API port: {})",
-                    web_port, api_port
-                );
+                    api_port + 1
+                };
+
+                info!("Starting Web Gateway on port {}", web_port);
 
                 if let Err(e) = crate::web_gateway::start_web_gateway(node, web_port).await {
                     error!("Web Gateway error: {}", e);
