@@ -852,6 +852,16 @@ fn list_peers(port_override: Option<u16>) -> anyhow::Result<()> {
 
 fn show_status(port_override: Option<u16>) -> anyhow::Result<()> {
     let api_port = get_api_port(port_override);
+    
+    // Show which API port we're connecting to (helpful for debugging)
+    if port_override.is_none() && std::env::var("MESHLINK_API_PORT").is_err() {
+        // Only show if using auto-detection
+        eprintln!(
+            "{} Connecting to API on port {} (use --port <api_port> to specify different port)",
+            "ℹ".cyan(),
+            api_port
+        );
+    }
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     stream.set_write_timeout(Some(Duration::from_secs(5)))?;
