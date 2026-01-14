@@ -1,5 +1,5 @@
-use colored::*;
 use crate::{Config, Node};
+use colored::*;
 use std::io::Write;
 use std::net::TcpStream;
 use std::time::Duration;
@@ -27,7 +27,11 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             if args.len() < 3 {
                 eprintln!(
                     "{}",
-                    format!("Usage: {} start <p2p_port> [peer1] [peer2] ... [-d|--daemon]", bin).yellow()
+                    format!(
+                        "Usage: {} start <p2p_port> [peer1] [peer2] ... [-d|--daemon]",
+                        bin
+                    )
+                    .yellow()
                 );
                 return Ok(());
             }
@@ -36,7 +40,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         }
         "chat" => {
             if args.len() < 3 {
-                eprintln!("{}", format!("Usage: {} chat <peer_id|broadcast>", bin).yellow());
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} chat <peer_id|broadcast>", bin).yellow()
+                );
                 return Ok(());
             }
             let target = args[2].clone();
@@ -107,7 +114,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         }
         "fetch" => {
             if args.len() < 3 {
-                eprintln!("{}", format!("Usage: {} fetch <ely://node_id/path>", bin).yellow());
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} fetch <ely://node_id/path>", bin).yellow()
+                );
                 return Ok(());
             }
             let url = args[2].clone();
@@ -115,7 +125,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         }
         "name" => {
             if args.len() < 3 {
-                eprintln!("{}", format!("Usage: {} name <register|resolve> [args]", bin).yellow());
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} name <register|resolve> [args]", bin).yellow()
+                );
                 return Ok(());
             }
             let subcommand = &args[2];
@@ -134,24 +147,28 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 }
                 "resolve" => {
                     if args.len() < 4 {
-                        eprintln!(
-                            "{}",
-                            format!("Usage: {} name resolve <name>", bin).yellow()
-                        );
+                        eprintln!("{}", format!("Usage: {} name resolve <name>", bin).yellow());
                         return Ok(());
                     }
                     let name = args[3].clone();
                     name_resolve(name)?;
                 }
                 _ => {
-                    eprintln!("{} Unknown name subcommand: {}", "✗".red().bold(), subcommand.red());
+                    eprintln!(
+                        "{} Unknown name subcommand: {}",
+                        "✗".red().bold(),
+                        subcommand.red()
+                    );
                     eprintln!("  Available: register, resolve");
                 }
             }
         }
         "bundle" => {
             if args.len() < 3 {
-                eprintln!("{}", format!("Usage: {} bundle <export|import|info> [args]", bin).yellow());
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} bundle <export|import|info> [args]", bin).yellow()
+                );
                 return Ok(());
             }
             let subcommand = &args[2];
@@ -190,7 +207,11 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                     bundle_info(bundle_file)?;
                 }
                 _ => {
-                    eprintln!("{} Unknown bundle subcommand: {}", "✗".red().bold(), subcommand.red());
+                    eprintln!(
+                        "{} Unknown bundle subcommand: {}",
+                        "✗".red().bold(),
+                        subcommand.red()
+                    );
                     eprintln!("  Available: export, import, info");
                 }
             }
@@ -200,7 +221,10 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
         }
         "handle-url" => {
             if args.len() < 3 {
-                eprintln!("{}", format!("Usage: {} handle-url <ely://...>", bin).yellow());
+                eprintln!(
+                    "{}",
+                    format!("Usage: {} handle-url <ely://...>", bin).yellow()
+                );
                 return Ok(());
             }
             let url = args[2].clone();
@@ -230,7 +254,10 @@ fn print_usage(bin: &str) {
         "  {} <p2p_port> [peers...] [-d]  Start a node (P2P + discovery + local API)",
         "start".cyan()
     );
-    println!("                                {} Use -d to run in background (daemon mode)", "→".dimmed());
+    println!(
+        "                                {} Use -d to run in background (daemon mode)",
+        "→".dimmed()
+    );
     println!(
         "  {} <peer_id|broadcast>     Interactive chat (Ctrl+C to exit)",
         "chat".cyan()
@@ -310,7 +337,7 @@ fn get_api_port() -> u16 {
     }
 
     // Priority 2: Last used port file (from running node)
-    if let Some(home) = std::env::var("HOME").ok() {
+    if let Ok(home) = std::env::var("HOME") {
         let port_file = std::path::Path::new(&home).join(".elysium_api_port");
         if let Ok(content) = std::fs::read_to_string(&port_file) {
             if let Ok(port) = content.trim().parse::<u16>() {
@@ -361,11 +388,7 @@ fn get_api_port() -> u16 {
         "✗ Error: Could not find Elysium API server".red().bold()
     );
     eprintln!("  Make sure a node is running:");
-    eprintln!(
-        "  {} {}",
-        "→".dimmed(),
-        "ely start 8080".yellow()
-    );
+    eprintln!("  {} {}", "→".dimmed(), "ely start 8080".yellow());
     eprintln!();
     eprintln!("  Or specify the API port explicitly:");
     eprintln!(
@@ -441,7 +464,10 @@ fn inbox(limit: usize) -> anyhow::Result<()> {
         anyhow::bail!("API error: {}", error);
     }
 
-    let messages = resp["data"]["messages"].as_array().cloned().unwrap_or_default();
+    let messages = resp["data"]["messages"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
     if messages.is_empty() {
         println!("{}", "Inbox is empty".dimmed());
         return Ok(());
@@ -526,12 +552,11 @@ fn print_inbox_message(m: &serde_json::Value) {
 }
 
 fn chat(target: String) -> anyhow::Result<()> {
+    println!("{} {}", "Chat target:".bright_white().bold(), target.cyan());
     println!(
-        "{} {}",
-        "Chat target:".bright_white().bold(),
-        target.cyan()
+        "{}",
+        "Type messages and press Enter. Ctrl+C to exit.".dimmed()
     );
-    println!("{}", "Type messages and press Enter. Ctrl+C to exit.".dimmed());
     println!();
 
     // Background thread: stream inbox and print as it arrives.
@@ -553,7 +578,10 @@ fn chat(target: String) -> anyhow::Result<()> {
         if target == "broadcast" {
             let _ = send_message(None, msg.to_string());
         } else {
-            let _ = send_message(Some(normalize_peer_id(&target).to_string()), msg.to_string());
+            let _ = send_message(
+                Some(normalize_peer_id(&target).to_string()),
+                msg.to_string(),
+            );
         }
     }
 
@@ -568,48 +596,56 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
         .filter(|a| *a != "-d" && *a != "--daemon")
         .cloned()
         .collect();
-    
+
     config_args.insert(0, "core".to_string());
 
     let config = Config::from_args(&config_args)?;
-    
+
     if daemon {
         // Run in background: spawn new process and detach
         let mut cmd = std::process::Command::new(std::env::current_exe()?);
-        
+
         // Rebuild args: ["start", "<port>", ...] (without daemon flag and without "core"/"ely")
         let mut new_args: Vec<String> = vec!["start".to_string()];
         new_args.extend(config_args.iter().skip(1).cloned()); // Skip "core", keep rest (port, peers, etc)
         cmd.args(&new_args);
-        
+
         // Redirect stdout/stderr to log file
-        let log_dir = config.data_dir.as_ref()
-            .map(|d| d.clone())
+        let log_dir = config
+            .data_dir
+            .clone()
             .unwrap_or_else(|| std::path::PathBuf::from(".ely"));
         std::fs::create_dir_all(&log_dir)?;
         let log_file = log_dir.join(format!("node-{}.log", config.listen_addr.port()));
-        
+
         let file = std::fs::File::create(&log_file)?;
         cmd.stdout(file.try_clone()?);
         cmd.stderr(file);
-        
+
         // Note: Process will continue running after parent exits on Unix
         // We don't wait for it, so it becomes detached automatically
-        
+
         // Spawn process in background
         let mut child = cmd.spawn()?;
         let pid = child.id();
-        
+
         // Give it a moment to start and initialize
         std::thread::sleep(std::time::Duration::from_millis(500));
-        
+
         // Check if process is still running
         match child.try_wait() {
             Ok(Some(status)) => {
                 // Process exited immediately - read log file to show error
                 let error_msg = if let Ok(log_content) = std::fs::read_to_string(&log_file) {
-                    format!("Node exited. Last log entries:\n{}", 
-                        log_content.lines().rev().take(10).collect::<Vec<_>>().join("\n"))
+                    format!(
+                        "Node exited. Last log entries:\n{}",
+                        log_content
+                            .lines()
+                            .rev()
+                            .take(10)
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )
                 } else {
                     format!("Node exited with status: {}", status)
                 };
@@ -620,33 +656,28 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
             }
             Err(e) => {
                 // Can't check status - assume it's running
-                tracing::debug!("Could not check child process status: {} (assuming running)", e);
+                tracing::debug!(
+                    "Could not check child process status: {} (assuming running)",
+                    e
+                );
             }
         }
-        
+
         // Don't wait for child - let it run in background
         // The process will continue even after this function returns
-        
+
         println!(
             "{} Node started in background (PID: {})",
             "✓".green().bold(),
             pid
         );
-        println!(
-            "{} Logs: {}",
-            "→".cyan(),
-            log_file.display()
-        );
-        println!(
-            "{} Stop with: kill {}",
-            "→".cyan(),
-            pid
-        );
+        println!("{} Logs: {}", "→".cyan(), log_file.display());
+        println!("{} Stop with: kill {}", "→".cyan(), pid);
         println!(
             "{} Wait a moment for node to initialize before running commands",
             "→".dimmed()
         );
-        
+
         Ok(())
     } else {
         // Run in foreground (original behavior)
@@ -826,8 +857,7 @@ fn publish(path: String, content_arg: String) -> anyhow::Result<()> {
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
     // Read content from file if starts with @
-    let content = if content_arg.starts_with('@') {
-        let file_path = &content_arg[1..];
+    let content = if let Some(file_path) = content_arg.strip_prefix('@') {
         std::fs::read(file_path)?
     } else {
         content_arg.into_bytes()
@@ -857,7 +887,11 @@ fn publish(path: String, content_arg: String) -> anyhow::Result<()> {
     if resp["success"].as_bool().unwrap_or(false) {
         if let Some(data) = resp["data"].as_object() {
             if let Some(url) = data["url"].as_str() {
-                println!("{} Content published at: {}", "✓".green().bold(), url.green());
+                println!(
+                    "{} Content published at: {}",
+                    "✓".green().bold(),
+                    url.green()
+                );
             }
         }
     } else {
@@ -895,11 +929,7 @@ fn fetch(url: String) -> anyhow::Result<()> {
         if let Some(data) = resp["data"].as_object() {
             if let Some(content) = data["content"].as_str() {
                 if let Some(size) = data["size_bytes"].as_u64() {
-                    println!(
-                        "{} Content retrieved ({} bytes):",
-                        "✓".green().bold(),
-                        size
-                    );
+                    println!("{} Content retrieved ({} bytes):", "✓".green().bold(), size);
                     println!("{}", content);
                 }
             }
@@ -974,7 +1004,12 @@ fn name_resolve(name: String) -> anyhow::Result<()> {
 
     if resp["success"].as_bool().unwrap_or(false) {
         if let Some(node_id) = resp["data"]["node_id"].as_str() {
-            println!("{} {} → {}", "✓".green().bold(), name.yellow(), node_id.green());
+            println!(
+                "{} {} → {}",
+                "✓".green().bold(),
+                name.yellow(),
+                node_id.green()
+            );
         }
     } else {
         let error = resp["error"].as_str().unwrap_or("Unknown error");
@@ -991,7 +1026,11 @@ fn bundle_export(output_file: String) -> anyhow::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(30)))?;
 
-    println!("{} Exporting bundle to: {}", "📦".cyan().bold(), output_file.yellow());
+    println!(
+        "{} Exporting bundle to: {}",
+        "📦".cyan().bold(),
+        output_file.yellow()
+    );
 
     let request = serde_json::json!({
         "command": "bundle_export",
@@ -1025,7 +1064,11 @@ fn bundle_import(input_file: String) -> anyhow::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(30)))?;
 
-    println!("{} Importing bundle from: {}", "📦".cyan().bold(), input_file.yellow());
+    println!(
+        "{} Importing bundle from: {}",
+        "📦".cyan().bold(),
+        input_file.yellow()
+    );
 
     let request = serde_json::json!({
         "command": "bundle_import",
@@ -1066,7 +1109,11 @@ fn bundle_info(bundle_file: String) -> anyhow::Result<()> {
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
 
-    println!("{} Bundle info: {}", "📦".cyan().bold(), bundle_file.yellow());
+    println!(
+        "{} Bundle info: {}",
+        "📦".cyan().bold(),
+        bundle_file.yellow()
+    );
 
     let request = serde_json::json!({
         "command": "bundle_info",
@@ -1092,7 +1139,10 @@ fn bundle_info(bundle_file: String) -> anyhow::Result<()> {
             println!("  Messages: {}", count);
             println!("  Created:  {}", created);
             println!("  Expires:  {}", expires);
-            println!("  Expired:  {}", if expired { "YES".red() } else { "NO".green() });
+            println!(
+                "  Expired:  {}",
+                if expired { "YES".red() } else { "NO".green() }
+            );
         }
     } else {
         let error = resp["error"].as_str().unwrap_or("Unknown error");

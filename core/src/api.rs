@@ -63,9 +63,7 @@ enum ApiRequest {
     #[serde(rename = "name_resolve")]
     NameResolve { name: String },
     #[serde(rename = "bundle_export")]
-    BundleExport {
-        output_path: String,
-    },
+    BundleExport { output_path: String },
     #[serde(rename = "bundle_import")]
     BundleImport { input_path: String },
     #[serde(rename = "bundle_info")]
@@ -113,7 +111,7 @@ pub async fn start_api_server_with_listener(node: Node, listener: TcpListener) -
     info!("API server listening on {}", api_addr);
 
     // Save API port to ~/.elysium_api_port for easy CLI discovery
-    if let Some(home) = std::env::var("HOME").ok() {
+    if let Ok(home) = std::env::var("HOME") {
         let port_file = std::path::Path::new(&home).join(".elysium_api_port");
         let _ = std::fs::write(&port_file, api_addr.port().to_string());
     }
@@ -264,22 +262,21 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 "messages": messages
             })))
         }
-        ApiRequest::Publish { path, content } => {
-            match node.publish_content(&path, content).await {
-                Ok(url) => Ok(ApiResponse::success(serde_json::json!({
-                    "url": url,
-                    "path": path
-                }))),
-                Err(e) => Ok(ApiResponse::error(format!("{}", e))),
-            }
-        }
+        ApiRequest::Publish { path, content } => match node.publish_content(&path, content).await {
+            Ok(url) => Ok(ApiResponse::success(serde_json::json!({
+                "url": url,
+                "path": path
+            }))),
+            Err(e) => Ok(ApiResponse::error(format!("{}", e))),
+        },
         ApiRequest::Fetch { url, timeout_ms } => {
             let timeout = Duration::from_millis(timeout_ms.unwrap_or(5000).min(30_000));
             match node.fetch_content(&url, timeout).await {
                 Ok(Some(content)) => {
                     // Try to decode as UTF-8 string, otherwise return base64
-                    let content_str = String::from_utf8(content.clone())
-                        .unwrap_or_else(|_| base64::engine::general_purpose::STANDARD.encode(&content));
+                    let content_str = String::from_utf8(content.clone()).unwrap_or_else(|_| {
+                        base64::engine::general_purpose::STANDARD.encode(&content)
+                    });
                     Ok(ApiResponse::success(serde_json::json!({
                         "url": url,
                         "content": content_str,
@@ -299,15 +296,13 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 Err(e) => Ok(ApiResponse::error(format!("{}", e))),
             }
         }
-        ApiRequest::NameResolve { name } => {
-            match node.resolve_name(&name).await {
-                Some(node_id) => Ok(ApiResponse::success(serde_json::json!({
-                    "name": name,
-                    "node_id": node_id
-                }))),
-                None => Ok(ApiResponse::error(format!("Name not found: {}", name))),
-            }
-        }
+        ApiRequest::NameResolve { name } => match node.resolve_name(&name).await {
+            Some(node_id) => Ok(ApiResponse::success(serde_json::json!({
+                "name": name,
+                "node_id": node_id
+            }))),
+            None => Ok(ApiResponse::error(format!("Name not found: {}", name))),
+        },
         ApiRequest::BundleExport { output_path } => {
             let limit = 1000; // Max messages per bundle
             match node.export_bundle(limit).await {
@@ -336,7 +331,10 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                             "delivered": delivered,
                             "forwarded": forwarded
                         }))),
-                        Err(e) => Ok(ApiResponse::error(format!("Failed to import bundle: {}", e))),
+                        Err(e) => Ok(ApiResponse::error(format!(
+                            "Failed to import bundle: {}",
+                            e
+                        ))),
                     }
                 }
                 Err(e) => Ok(ApiResponse::error(format!("Failed to load bundle: {}", e))),

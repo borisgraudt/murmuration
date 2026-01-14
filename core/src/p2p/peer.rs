@@ -346,7 +346,7 @@ impl PeerManager {
             const MIN_HANDSHAKE_SIZE: usize = 10; // Minimum reasonable size
 
             // Sanity check: if length looks like ASCII or is suspiciously large, something's wrong
-            if len < MIN_HANDSHAKE_SIZE || len > MAX_HANDSHAKE_SIZE {
+            if !(MIN_HANDSHAKE_SIZE..=MAX_HANDSHAKE_SIZE).contains(&len) {
                 tracing::error!(
                     "Invalid handshake ack length: {} bytes (raw bytes: {:?}, hex: {:02x}{:02x}{:02x}{:02x})",
                     len,
@@ -439,7 +439,7 @@ impl PeerManager {
             const MAX_HANDSHAKE_SIZE: usize = 10 * 1024; // 10KB
             const MIN_HANDSHAKE_SIZE: usize = 10; // Minimum reasonable size
 
-            if len < MIN_HANDSHAKE_SIZE || len > MAX_HANDSHAKE_SIZE {
+            if !(MIN_HANDSHAKE_SIZE..=MAX_HANDSHAKE_SIZE).contains(&len) {
                 tracing::error!(
                     "Invalid handshake length: {} bytes (raw bytes: {:?}, hex: {:02x}{:02x}{:02x}{:02x})",
                     len,

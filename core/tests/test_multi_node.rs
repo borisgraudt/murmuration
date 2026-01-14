@@ -101,7 +101,7 @@ async fn test_5_nodes_mesh() {
             ..Default::default()
         };
 
-        let node = Node::new(config).expect(&format!("Failed to create node{}", i));
+        let node = Node::new(config).unwrap_or_else(|_| panic!("Failed to create node{}", i));
         let handle = {
             let n = node.clone();
             tokio::spawn(async move { n.start().await })

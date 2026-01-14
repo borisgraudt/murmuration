@@ -1,6 +1,7 @@
 /// Web Gateway - HTTP server for viewing ely:// content in browser
 use crate::error::Result;
 use crate::node::Node;
+use base64::{engine::general_purpose, Engine as _};
 use http_body_util::Full;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
@@ -11,35 +12,36 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::{error, info};
-use base64::{Engine as _, engine::general_purpose};
 
 pub async fn start_web_gateway(node: Arc<Node>, port: u16) -> Result<()> {
     // Bind to both localhost and ely.local (if configured in /etc/hosts)
-    let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()
-        .map_err(|e| crate::error::MeshError::Io(std::io::Error::new(
+    let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().map_err(|e| {
+        crate::error::MeshError::Io(std::io::Error::new(
             std::io::ErrorKind::AddrNotAvailable,
-            format!("Invalid address: {}", e)
-        )))?;
-    
-    let listener = TcpListener::bind(addr).await
+            format!("Invalid address: {}", e),
+        ))
+    })?;
+
+    let listener = TcpListener::bind(addr)
+        .await
         .map_err(crate::error::MeshError::Io)?;
-    
+
     info!("Web Gateway started on http://{}", addr);
-    info!("  Also available at: http://ely.local:{} (if configured in /etc/hosts)", port);
-    
+    info!(
+        "  Also available at: http://ely.local:{} (if configured in /etc/hosts)",
+        port
+    );
+
     loop {
         match listener.accept().await {
             Ok((stream, _)) => {
                 let io = TokioIo::new(stream);
                 let node_clone = node.clone();
-                
+
                 tokio::spawn(async move {
                     let service = service_fn(move |req| handle_request(req, node_clone.clone()));
-                    
-                    if let Err(err) = http1::Builder::new()
-                        .serve_connection(io, service)
-                        .await
-                    {
+
+                    if let Err(err) = http1::Builder::new().serve_connection(io, service).await {
                         error!("Error serving connection: {:?}", err);
                     }
                 });
@@ -56,7 +58,7 @@ async fn handle_request(
     node: Arc<Node>,
 ) -> std::result::Result<Response<Full<bytes::Bytes>>, hyper::Error> {
     let path = req.uri().path();
-    
+
     // Support both old /view?url=... and new /e/... format
     if path.starts_with("/e/") {
         // New format: /e/<encoded_ely_url>
@@ -66,16 +68,16 @@ async fn handle_request(
             .ok()
             .and_then(|b| String::from_utf8(b).ok())
             .unwrap_or_else(|| format!("ely://{}", encoded.replace("%2F", "/")));
-        
+
         return handle_content_request(&url, node).await;
     }
-    
+
     match (req.method(), path) {
         (&Method::GET, "/view") => {
             // Legacy format: ?url=ely://...
             let query = req.uri().query().unwrap_or("");
             let url = extract_url_from_query(query);
-            
+
             if url.is_empty() {
                 return match Response::builder()
                     .status(StatusCode::BAD_REQUEST)
@@ -91,7 +93,7 @@ async fn handle_request(
                     }
                 };
             }
-            
+
             handle_content_request(&url, node).await
         }
         (&Method::GET, "/") => {
@@ -160,7 +162,7 @@ fn extract_url_from_query(query: &str) -> String {
         if let Some((key, value)) = param.split_once('=') {
             if key == "url" {
                 return urlencoding::decode(value)
-                    .unwrap_or_else(|_| std::borrow::Cow::Borrowed(value))
+                    .unwrap_or(std::borrow::Cow::Borrowed(value))
                     .to_string();
             }
         }
@@ -176,14 +178,14 @@ async fn handle_content_request(
     match node.fetch_content(url, Duration::from_secs(10)).await {
         Ok(Some(content)) => {
             let content_type = detect_content_type(url, &content);
-            
+
             // For HTML content, inject JavaScript to rewrite URL in address bar
             let body_bytes = if content_type.starts_with("text/html") {
                 inject_url_rewriter(&content, url)
             } else {
                 content
             };
-            
+
             match Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", content_type)
@@ -207,8 +209,7 @@ async fn handle_content_request(
                 .body(Full::new(bytes::Bytes::from(format!(
                     "Content not found: {}",
                     url
-                ))))
-            {
+                )))) {
                 Ok(resp) => Ok(resp),
                 Err(e) => {
                     error!("Failed to build response: {}", e);
@@ -227,8 +228,7 @@ async fn handle_content_request(
                 .body(Full::new(bytes::Bytes::from(format!(
                     "Error fetching content: {}",
                     e
-                ))))
-            {
+                )))) {
                 Ok(resp) => Ok(resp),
                 Err(build_err) => {
                     error!("Failed to build error response: {}", build_err);
@@ -245,11 +245,11 @@ async fn handle_content_request(
 /// Inject JavaScript to rewrite URL in address bar and handle navigation
 fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
     let html_str = String::from_utf8_lossy(html_content);
-    
+
     // Encode URL for use in JavaScript
     let encoded_url = ely_url.replace('\\', "\\\\").replace('"', "\\\"");
     let encoded_base64 = general_purpose::URL_SAFE_NO_PAD.encode(ely_url.as_bytes());
-    
+
     // JavaScript to rewrite URL and handle navigation
     let script = format!(
         r#"
@@ -366,10 +366,10 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
 "#,
         encoded_url, encoded_base64
     );
-    
+
     // Inject script before </head> or at the beginning of <body>
     let mut result = html_str.to_string();
-    
+
     if let Some(idx) = result.find("</head>") {
         result.insert_str(idx, &script);
     } else if let Some(idx) = result.find("<body>") {
@@ -378,7 +378,7 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
         // No head or body, prepend
         result = format!("{}{}", script, result);
     }
-    
+
     result.into_bytes()
 }
 
@@ -406,4 +406,3 @@ fn detect_content_type(url: &str, content: &[u8]) -> &'static str {
         "text/plain; charset=utf-8"
     }
 }
-

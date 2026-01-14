@@ -10,15 +10,15 @@ use std::path::{Path, PathBuf};
 fn derive_node_id(encryption: &EncryptionManager) -> Result<String> {
     // Get public key DER bytes
     let public_key_der = encryption.get_public_key_der()?;
-    
+
     // Hash it
     let mut hasher = Sha256::new();
     hasher.update(&public_key_der);
     let hash = hasher.finalize();
-    
+
     // Base58 encode (like Bitcoin addresses)
     let node_id = bs58::encode(&hash[..]).into_string();
-    
+
     Ok(node_id)
 }
 

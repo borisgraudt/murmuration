@@ -16,11 +16,10 @@ impl ContentStore {
     pub fn new(data_dir: &Path) -> Result<Self> {
         let db_path = data_dir.join("content.db");
         debug!("Opening content store at {:?}", db_path);
-        
-        let db = sled::open(&db_path).map_err(|e| {
-            MeshError::Storage(format!("Failed to open content store: {}", e))
-        })?;
-        
+
+        let db = sled::open(&db_path)
+            .map_err(|e| MeshError::Storage(format!("Failed to open content store: {}", e)))?;
+
         info!("Content store initialized at {:?}", db_path);
         Ok(Self { db: Arc::new(db) })
     }
@@ -29,50 +28,53 @@ impl ContentStore {
     /// Path format: ely://<node_id>/<path> or just <path> (node_id prepended automatically)
     pub fn put(&self, path: &str, content: Vec<u8>) -> Result<()> {
         debug!("Storing content at {}: {} bytes", path, content.len());
-        
+
         self.db
             .insert(path.as_bytes(), content)
             .map_err(|e| MeshError::Storage(format!("Failed to store content: {}", e)))?;
-        
+
         self.db
             .flush()
             .map_err(|e| MeshError::Storage(format!("Failed to flush content store: {}", e)))?;
-        
+
         Ok(())
     }
 
     /// Retrieve content from a specific path
     pub fn get(&self, path: &str) -> Result<Option<Vec<u8>>> {
         debug!("Fetching content from {}", path);
-        
+
         match self.db.get(path.as_bytes()) {
             Ok(Some(value)) => Ok(Some(value.to_vec())),
             Ok(None) => Ok(None),
-            Err(e) => Err(MeshError::Storage(format!("Failed to fetch content: {}", e))),
+            Err(e) => Err(MeshError::Storage(format!(
+                "Failed to fetch content: {}",
+                e
+            ))),
         }
     }
 
     /// Delete content at a specific path
     pub fn delete(&self, path: &str) -> Result<()> {
         debug!("Deleting content at {}", path);
-        
+
         self.db
             .remove(path.as_bytes())
             .map_err(|e| MeshError::Storage(format!("Failed to delete content: {}", e)))?;
-        
+
         Ok(())
     }
 
     /// List all stored paths (optionally with a prefix filter)
     pub fn list(&self, prefix: Option<&str>) -> Result<Vec<String>> {
         debug!("Listing content with prefix: {:?}", prefix);
-        
+
         let iter = if let Some(p) = prefix {
             self.db.scan_prefix(p.as_bytes())
         } else {
             self.db.iter()
         };
-        
+
         let mut paths = Vec::new();
         for entry in iter {
             match entry {
@@ -81,12 +83,10 @@ impl ContentStore {
                         paths.push(path);
                     }
                 }
-                Err(e) => {
-                    return Err(MeshError::Storage(format!("Failed to list content: {}", e)))
-                }
+                Err(e) => return Err(MeshError::Storage(format!("Failed to list content: {}", e))),
             }
         }
-        
+
         Ok(paths)
     }
 
@@ -116,7 +116,7 @@ mod tests {
         // Put and get
         let content = b"Hello, Elysium!".to_vec();
         store.put("test/page.html", content.clone()).unwrap();
-        
+
         let retrieved = store.get("test/page.html").unwrap();
         assert_eq!(retrieved, Some(content));
 
@@ -153,8 +153,3 @@ mod tests {
         assert!(store.get("temp.txt").unwrap().is_none());
     }
 }
-
-
-
-
-

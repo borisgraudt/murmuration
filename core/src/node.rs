@@ -6,10 +6,10 @@ use crate::ai::routing_logger::{
 use crate::config::Config;
 use crate::content_store::ContentStore;
 use crate::elysium::packet::ElysiumPacket;
-use crate::message_store::MessageStore;
-use crate::naming::NameRegistry;
 use crate::error::{MeshError, Result};
 use crate::identity;
+use crate::message_store::MessageStore;
+use crate::naming::NameRegistry;
 use crate::p2p::discovery::DiscoveryManager;
 use crate::p2p::encryption::{EncryptionManager, SessionKeyManager};
 use crate::p2p::peer::{ConnectionState, PeerManager};
@@ -27,6 +27,9 @@ use tokio::sync::{mpsc, oneshot, Notify, RwLock, Semaphore};
 use tokio::time::{interval, sleep, timeout};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
+
+/// Type alias for ping waiter (sent_at, responder)
+type PingWaiter = (Instant, oneshot::Sender<Duration>);
 
 const INBOX_MAX_MESSAGES: usize = 500;
 
@@ -97,7 +100,7 @@ pub struct Node {
     pending_pings: Arc<RwLock<HashMap<String, Instant>>>,
 
     /// Manual ping waiters (peer_id -> (sent_at, responder))
-    pending_manual_pings: Arc<RwLock<HashMap<String, (Instant, oneshot::Sender<Duration>)>>>,
+    pending_manual_pings: Arc<RwLock<HashMap<String, PingWaiter>>>,
 
     /// Heartbeat missed pongs counter (peer_id -> consecutive missed count)
     missed_pongs: Arc<RwLock<HashMap<String, u32>>>,
@@ -206,10 +209,10 @@ impl Node {
             inbox.pop_front();
         }
         drop(inbox);
-        
+
         // Persist to DB (best-effort)
         let _ = self.message_store.save(&msg);
-        
+
         self.inbox_notify.notify_waiters();
     }
 
@@ -257,7 +260,10 @@ impl Node {
     }
 
     /// Import bundle and deliver messages
-    pub async fn import_bundle(&self, bundle: crate::bundle::MessageBundle) -> Result<(usize, usize)> {
+    pub async fn import_bundle(
+        &self,
+        bundle: crate::bundle::MessageBundle,
+    ) -> Result<(usize, usize)> {
         let mut delivered = 0;
         let forwarded = 0;
 
@@ -392,19 +398,25 @@ impl Node {
             tokio::spawn(async move {
                 // Wait a bit for API server to bind and set api_addr
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                
+
                 // Get API port (may fall back if preferred port was taken)
                 let mut api_port = node.get_api_addr().await.port();
-                
+
                 // If API port is still 0 or uninitialized, use default
                 if api_port == 0 {
                     api_port = 17080; // Default fallback
-                    warn!("Web Gateway: API port not yet initialized, using default {}", api_port);
+                    warn!(
+                        "Web Gateway: API port not yet initialized, using default {}",
+                        api_port
+                    );
                 }
-                
+
                 let web_port = api_port + 1;
-                info!("Starting Web Gateway on port {} (API port: {})", web_port, api_port);
-                
+                info!(
+                    "Starting Web Gateway on port {} (API port: {})",
+                    web_port, api_port
+                );
+
                 if let Err(e) = crate::web_gateway::start_web_gateway(node, web_port).await {
                     error!("Web Gateway error: {}", e);
                 }
@@ -552,9 +564,13 @@ impl Node {
             format!("ely://{}/{}", self.id, clean_path)
         };
 
-        info!("Publishing content: {} ({} bytes)", full_path, content.len());
+        info!(
+            "Publishing content: {} ({} bytes)",
+            full_path,
+            content.len()
+        );
         self.content_store.put(&full_path, content)?;
-        
+
         Ok(full_path)
     }
 
@@ -569,11 +585,14 @@ impl Node {
 
         let url_parts: Vec<&str> = url.trim_start_matches("ely://").splitn(2, '/').collect();
         if url_parts.len() < 2 {
-            return Err(MeshError::Protocol(format!("Invalid content URL format: {}", url)));
+            return Err(MeshError::Protocol(format!(
+                "Invalid content URL format: {}",
+                url
+            )));
         }
 
         let target_node_id = url_parts[0];
-        
+
         // Local fetch (fast path)
         if target_node_id == self.id {
             debug!("Fetching local content: {}", url);
@@ -581,8 +600,11 @@ impl Node {
         }
 
         // Remote fetch: send ContentRequest and wait for response
-        info!("Fetching remote content: {} from node {}", url, target_node_id);
-        
+        info!(
+            "Fetching remote content: {} from node {}",
+            url, target_node_id
+        );
+
         let request_id = Uuid::new_v4().to_string();
         let request = Message::ContentRequest {
             request_id: request_id.clone(),
@@ -594,20 +616,20 @@ impl Node {
 
         // Create response channel
         let (tx, rx) = oneshot::channel::<Vec<u8>>();
-        
+
         // Store pending request
         {
             let mut pending = self.pending_content_requests.write().await;
             pending.insert(request_id.clone(), tx);
         }
-        
+
         // Send request via mesh routing (broadcast or directed if we know a route to target)
         let request_bytes = request.to_bytes().map_err(MeshError::Serialization)?;
         let data_msg = Message::Data {
             payload: request_bytes,
             message_id: request_id.clone(),
         };
-        
+
         // Broadcast to all connected peers (routing will handle forwarding)
         let senders = self.message_senders.read().await;
         for (peer_id, ch) in senders.iter() {
@@ -616,7 +638,7 @@ impl Node {
             }
         }
         drop(senders);
-        
+
         // Wait for response (with timeout)
         match timeout(timeout_dur, rx).await {
             Ok(Ok(content)) => Ok(Some(content)),
@@ -1298,7 +1320,7 @@ impl Node {
                 }
                 Message::Pong { timestamp: _ } => {
                     debug!("Received pong from {}", peer_id);
-                    
+
                     // Reset missed pongs counter (heartbeat is alive)
                     {
                         let mut missed = self.missed_pongs.write().await;
@@ -1338,8 +1360,11 @@ impl Node {
                     ttl,
                     path,
                 } => {
-                    debug!("Received content request: {} for {} from {}", request_id, url, from_node);
-                    
+                    debug!(
+                        "Received content request: {} for {} from {}",
+                        request_id, url, from_node
+                    );
+
                     // Check if this request is for us
                     if url.starts_with(&format!("ely://{}/", self.id)) {
                         // We are the content owner, check if we have it
@@ -1354,7 +1379,7 @@ impl Node {
                                     found: true,
                                     from_node: self.id.clone(),
                                 };
-                                
+
                                 // Send back via the peer who forwarded this request
                                 if let Some(ch) = self.message_senders.read().await.get(&peer_id) {
                                     if let Err(e) = ch.tx.send(response) {
@@ -1372,7 +1397,7 @@ impl Node {
                                     found: false,
                                     from_node: self.id.clone(),
                                 };
-                                
+
                                 if let Some(ch) = self.message_senders.read().await.get(&peer_id) {
                                     if let Err(e) = ch.tx.send(response) {
                                         warn!("Failed to send not-found response: {}", e);
@@ -1389,7 +1414,7 @@ impl Node {
                             debug!("Forwarding content request {} (ttl: {})", request_id, ttl);
                             let mut forward_path = path.clone();
                             forward_path.push(self.id.clone());
-                            
+
                             let forward_request = Message::ContentRequest {
                                 request_id,
                                 url,
@@ -1397,7 +1422,7 @@ impl Node {
                                 ttl: ttl - 1,
                                 path: forward_path,
                             };
-                            
+
                             // Forward to all connected peers except sender
                             let senders = self.message_senders.read().await;
                             for (other_peer_id, ch) in senders.iter() {
@@ -1425,9 +1450,14 @@ impl Node {
                     } else {
                         info!("✗ Content not found: {} (from {})", url, from_node);
                     }
-                    
+
                     // Match with pending request and deliver
-                    if let Some(tx) = self.pending_content_requests.write().await.remove(&request_id) {
+                    if let Some(tx) = self
+                        .pending_content_requests
+                        .write()
+                        .await
+                        .remove(&request_id)
+                    {
                         if let Some(data) = content {
                             let _ = tx.send(data);
                         }

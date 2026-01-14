@@ -8,7 +8,10 @@ pub fn install_url_handler() -> Result<()> {
     use std::fs;
     use std::path::PathBuf;
 
-    println!("{} Registering ely:// URL handler for macOS...", "🔧".cyan().bold());
+    println!(
+        "{} Registering ely:// URL handler for macOS...",
+        "🔧".cyan().bold()
+    );
 
     let home = std::env::var("HOME")?;
     let app_dir = PathBuf::from(&home).join(".elysium");
@@ -41,11 +44,14 @@ pub fn install_url_handler() -> Result<()> {
         "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
     )
     .arg("-f")
-    .arg(&app_dir.join("Info.plist"))
+    .arg(app_dir.join("Info.plist"))
     .output()?;
 
     if !output.status.success() {
-        eprintln!("{} Warning: lsregister returned non-zero exit code", "⚠".yellow().bold());
+        eprintln!(
+            "{} Warning: lsregister returned non-zero exit code",
+            "⚠".yellow().bold()
+        );
     }
 
     println!("{} URL handler registered for ely://", "✓".green().bold());
@@ -57,10 +63,13 @@ pub fn install_url_handler() -> Result<()> {
 #[cfg(target_os = "linux")]
 pub fn install_url_handler() -> Result<()> {
     use std::fs;
-    use std::path::PathBuf;
     use std::os::unix::fs::PermissionsExt;
+    use std::path::PathBuf;
 
-    println!("{} Registering ely:// URL handler for Linux...", "🔧".cyan().bold());
+    println!(
+        "{} Registering ely:// URL handler for Linux...",
+        "🔧".cyan().bold()
+    );
 
     let home = std::env::var("HOME")?;
     let apps_dir = PathBuf::from(&home).join(".local/share/applications");
@@ -96,7 +105,10 @@ NoDisplay=true
 
 #[cfg(target_os = "windows")]
 pub fn install_url_handler() -> Result<()> {
-    eprintln!("{} Windows support requires 'windows' feature", "✗".red().bold());
+    eprintln!(
+        "{} Windows support requires 'windows' feature",
+        "✗".red().bold()
+    );
     Ok(())
 }
 
@@ -113,14 +125,14 @@ pub fn handle_url(url: String) -> Result<()> {
 
     let api_port = detect_api_port();
     let web_port = api_port + 1;
-    
+
     // Use new clean URL format: /e/<base64_encoded>
     // Try ely.local first (cleaner), fallback to localhost
-    use base64::{Engine as _, engine::general_purpose};
+    use base64::{engine::general_purpose, Engine as _};
     let encoded = general_purpose::URL_SAFE_NO_PAD.encode(url.as_bytes());
     // Try ely.local first (cleaner), fallback to localhost if not configured
     let gateway_url = format!("http://ely.local:{}/e/{}", web_port, encoded);
-    
+
     // Note: If ely.local is not in /etc/hosts, browser will show error
     // User should add "127.0.0.1 ely.local" to /etc/hosts for cleaner URLs
 
@@ -128,10 +140,14 @@ pub fn handle_url(url: String) -> Result<()> {
     println!("  URL: {}", url.yellow());
 
     #[cfg(target_os = "macos")]
-    std::process::Command::new("open").arg(&gateway_url).status()?;
+    std::process::Command::new("open")
+        .arg(&gateway_url)
+        .status()?;
 
     #[cfg(target_os = "linux")]
-    let _ = std::process::Command::new("xdg-open").arg(&gateway_url).status();
+    let _ = std::process::Command::new("xdg-open")
+        .arg(&gateway_url)
+        .status();
 
     #[cfg(target_os = "windows")]
     std::process::Command::new("cmd")
@@ -152,4 +168,3 @@ fn detect_api_port() -> u16 {
     }
     17080
 }
-

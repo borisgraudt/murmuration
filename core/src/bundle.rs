@@ -28,20 +28,17 @@ impl MessageBundle {
 
     /// Export bundle to file
     pub fn save(&self, path: &Path) -> Result<()> {
-        let json = serde_json::to_vec_pretty(self)
-            .map_err(MeshError::Serialization)?;
-        fs::write(path, json)
-            .map_err(MeshError::Io)?;
+        let json = serde_json::to_vec_pretty(self).map_err(MeshError::Serialization)?;
+        fs::write(path, json).map_err(MeshError::Io)?;
         Ok(())
     }
 
     /// Load bundle from file
     pub fn load(path: &Path) -> Result<Self> {
-        let data = fs::read(path)
-            .map_err(MeshError::Io)?;
-        let bundle: MessageBundle = serde_json::from_slice(&data)
-            .map_err(MeshError::Serialization)?;
-        
+        let data = fs::read(path).map_err(MeshError::Io)?;
+        let bundle: MessageBundle =
+            serde_json::from_slice(&data).map_err(MeshError::Serialization)?;
+
         // Check version
         if bundle.version != 1 {
             return Err(MeshError::Protocol(format!(
@@ -49,13 +46,13 @@ impl MessageBundle {
                 bundle.version
             )));
         }
-        
+
         // Check expiry
         let now = chrono::Utc::now().timestamp();
         if bundle.expires_at < now {
             return Err(MeshError::Protocol("Bundle expired".to_string()));
         }
-        
+
         Ok(bundle)
     }
 
@@ -115,8 +112,3 @@ mod tests {
         assert_eq!(loaded.messages.len(), 1);
     }
 }
-
-
-
-
-

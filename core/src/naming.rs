@@ -38,11 +38,10 @@ impl NameRegistry {
         let mut cache = HashMap::new();
 
         // Load existing names
-        for entry in db.iter() {
-            if let Ok((key, value)) = entry {
-                if let Ok(record) = serde_json::from_slice::<NameRecord>(&value) {
-                    cache.insert(String::from_utf8_lossy(&key).to_string(), record);
-                }
+        for entry in db.iter().flatten() {
+            let (key, value) = entry;
+            if let Ok(record) = serde_json::from_slice::<NameRecord>(&value) {
+                cache.insert(String::from_utf8_lossy(&key).to_string(), record);
             }
         }
 
@@ -68,8 +67,7 @@ impl NameRegistry {
 
         // Persist if DB available
         if let Some(db) = &self.db {
-            let value = serde_json::to_vec(&record)
-                .map_err(MeshError::Serialization)?;
+            let value = serde_json::to_vec(&record).map_err(MeshError::Serialization)?;
             db.insert(name.as_bytes(), value)
                 .map_err(|e| MeshError::Storage(format!("Failed to store name: {}", e)))?;
             db.flush()
@@ -149,4 +147,3 @@ mod tests {
         assert_eq!(resolved, Some("Qm8xSK...".to_string()));
     }
 }
-
