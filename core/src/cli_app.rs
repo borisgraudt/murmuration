@@ -854,7 +854,14 @@ fn show_status(port_override: Option<u16>) -> anyhow::Result<()> {
     let api_port = get_api_port(port_override);
     
     // Show which API port we're connecting to (helpful for debugging)
-    if port_override.is_none() && std::env::var("MESHLINK_API_PORT").is_err() {
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    } else if std::env::var("MESHLINK_API_PORT").is_err() {
         // Only show if using auto-detection
         eprintln!(
             "{} Connecting to API on port {} (use --port <api_port> to specify different port)",
