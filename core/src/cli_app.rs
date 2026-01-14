@@ -556,9 +556,18 @@ fn inbox(limit: usize, port_override: Option<u16>) -> anyhow::Result<()> {
 
 fn watch(port_override: Option<u16>) -> anyhow::Result<()> {
     let mut since: u64 = 0;
+    let api_port = port_override.unwrap_or_else(|| get_api_port(None));
+    if let Some(port) = port_override {
+        eprintln!(
+            "{} Connecting to API on port {} {}",
+            "✓".green(),
+            port.to_string().cyan(),
+            "(specified with --port)".dimmed()
+        );
+    }
     loop {
-        let api_port = get_api_port(port_override);
-        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
+        let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))
+            .map_err(|e| anyhow::anyhow!("Failed to connect to API on port {}: {}. Make sure the node is running on this port.", api_port, e))?;
         stream.set_read_timeout(Some(Duration::from_secs(35)))?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))?;
 
