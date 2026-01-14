@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
+use tracing::warn;
 
 /// Generate node_id from public key (base58 encoded hash)
 fn derive_node_id(encryption: &EncryptionManager) -> Result<String> {
@@ -71,11 +72,15 @@ pub fn load_or_create(data_dir: &Path) -> Result<NodeIdentity> {
         // Verify that the stored node_id matches the derived one
         let derived_node_id = derive_node_id(&encryption)?;
         if derived_node_id != parsed.node_id {
-            return Err(MeshError::Config(format!(
+            // Auto-fix: delete corrupted identity and regenerate
+            warn!(
                 "Identity file node_id mismatch! Stored: {}, Derived: {}. \
-                 This may indicate corrupted identity file. Delete {} to regenerate.",
-                parsed.node_id, derived_node_id, path.display()
-            )));
+                 Auto-fixing: deleting corrupted file and regenerating...",
+                parsed.node_id, derived_node_id
+            );
+            fs::remove_file(&path).map_err(MeshError::Io)?;
+            // Recursively call to create new identity
+            return load_or_create(&data_dir);
         }
 
         return Ok(NodeIdentity {
