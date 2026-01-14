@@ -57,14 +57,14 @@ urlencoding = "2.1"
 # Post-Quantum Cryptography - using pqcrypto-kyber 0.8.1 (more stable)
 pqcrypto-kyber = { version = "0.8", optional = true }
 pqcrypto-traits = { version = "0.3", optional = true }
-# Windows registry for URL handler
-winreg = { version = "0.50", optional = true }
 
 [dev-dependencies]
 tempfile = "3.8"
 
+[target.'cfg(windows)'.dependencies]
+# Windows registry for URL handler (Windows-only)
+winreg = "0.50"
+
 [features]
 default = []
 pqc = ["pqcrypto-kyber", "pqcrypto-traits"]
-# Windows-specific features
-windows = ["winreg"]
