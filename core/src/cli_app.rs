@@ -1093,7 +1093,7 @@ fn fetch(url: String, port_override: Option<u16>) -> anyhow::Result<()> {
 }
 
 fn name_register(name: String, node_id: String) -> anyhow::Result<()> {
-    let api_port = get_api_port();
+    let api_port = get_api_port(None);
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
@@ -1131,7 +1131,7 @@ fn name_register(name: String, node_id: String) -> anyhow::Result<()> {
 }
 
 fn name_resolve(name: String) -> anyhow::Result<()> {
-    let api_port = get_api_port();
+    let api_port = get_api_port(None);
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
@@ -1170,7 +1170,7 @@ fn name_resolve(name: String) -> anyhow::Result<()> {
 }
 
 fn bundle_export(output_file: String) -> anyhow::Result<()> {
-    let api_port = get_api_port();
+    let api_port = get_api_port(None);
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(30)))?;
@@ -1208,7 +1208,7 @@ fn bundle_export(output_file: String) -> anyhow::Result<()> {
 }
 
 fn bundle_import(input_file: String) -> anyhow::Result<()> {
-    let api_port = get_api_port();
+    let api_port = get_api_port(None);
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(30)))?;
     stream.set_write_timeout(Some(Duration::from_secs(30)))?;
