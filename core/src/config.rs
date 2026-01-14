@@ -117,7 +117,7 @@ impl Config {
         let mut ai_debug = false;
         let mut data_dir: Option<PathBuf> = None;
         let mut api_port: Option<u16> = None;
-        let mut gateway_port = None::<u16>;
+        let mut gateway_port: Option<u16> = None;
         let mut discovery_port: Option<u16> = None;
         let mut enable_discovery = true;
         let mut max_connections: Option<usize> = None;
@@ -145,6 +145,15 @@ impl Config {
                     })?;
                     api_port = Some(p.parse::<u16>().map_err(|_| {
                         MeshError::Config("--api-port must be a valid number (0-65535)".to_string())
+                    })?);
+                    i += 2;
+                }
+                "--gateway" => {
+                    let p = args.get(i + 1).ok_or_else(|| {
+                        MeshError::Config("--gateway requires a port argument".to_string())
+                    })?;
+                    gateway_port = Some(p.parse::<u16>().map_err(|_| {
+                        MeshError::Config("--gateway must be a valid number (0-65535)".to_string())
                     })?);
                     i += 2;
                 }
