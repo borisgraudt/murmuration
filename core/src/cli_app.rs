@@ -1253,7 +1253,7 @@ fn bundle_import(input_file: String) -> anyhow::Result<()> {
 }
 
 fn bundle_info(bundle_file: String) -> anyhow::Result<()> {
-    let api_port = get_api_port();
+    let api_port = get_api_port(None);
     let mut stream = TcpStream::connect(format!("127.0.0.1:{}", api_port))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     stream.set_write_timeout(Some(Duration::from_secs(10)))?;
