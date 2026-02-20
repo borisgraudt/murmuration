@@ -1,3 +1,4 @@
-# MeshLink Python CLI dependencies
+# Elysium Python CLI dependencies
 rich>=13.7.0
+textual>=0.50.0
 

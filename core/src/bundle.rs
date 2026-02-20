@@ -102,6 +102,9 @@ mod tests {
             message_id: Some("msg1".to_string()),
             bytes: 100,
             preview: "test message".to_string(),
+            conversation_id: "dm:alice:bob".to_string(),
+            content: Some("test message".to_string()),
+            delivered: false,
         }];
 
         let bundle = MessageBundle::new(messages.clone(), 7);

@@ -45,6 +45,25 @@ impl MessageStore {
         Ok(messages)
     }
 
+    /// Mark a persisted message as delivered by scanning the DB
+    pub fn update_delivered(&self, message_id: &str) -> Result<()> {
+        for item in self.db.iter().flatten() {
+            let (key, val) = item;
+            if let Ok(mut msg) = serde_json::from_slice::<InboxMessage>(&val) {
+                if msg.message_id.as_deref() == Some(message_id) {
+                    msg.delivered = true;
+                    let updated =
+                        serde_json::to_vec(&msg).map_err(MeshError::Serialization)?;
+                    self.db
+                        .insert(key, updated)
+                        .map_err(|e| MeshError::Storage(format!("update_delivered: {}", e)))?;
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Get message count
     pub fn count(&self) -> usize {
         self.db.len()

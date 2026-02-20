@@ -1,16 +1,10 @@
-# MeshLink Python CLI
+# Elysium Python CLI & TUI
 
-Beautiful command-line interface for MeshLink nodes in Claude Code style.
+Beautiful command-line and terminal user interfaces for Elysium nodes, inspired by Claude Code.
 
 ## Installation
 
-### Option 1: Using pip (recommended)
-
-```bash
-pip3 install rich
-```
-
-### Option 2: Using virtual environment
+### Recommended: Using virtual environment
 
 ```bash
 python3 -m venv venv
@@ -18,15 +12,41 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### Option 3: System-wide (may require --break-system-packages)
+### Alternative: System-wide installation
 
 ```bash
-pip3 install --break-system-packages rich
+pip3 install rich textual
+# Or with --break-system-packages if needed
+pip3 install --break-system-packages rich textual
 ```
 
 ## Usage
 
-### Interactive Mode (Recommended)
+### 🎨 Advanced TUI (NEW - Recommended!)
+
+The most beautiful and feature-rich interface:
+
+```bash
+python3 advanced_tui.py
+```
+
+Features:
+- **Real-time panels:** Status, Peers, Messages
+- **Live updates:** Auto-refreshing node status and peer list
+- **Message streaming:** Real-time message feed
+- **Command history:** Navigate with ↑/↓ arrows
+- **Keyboard shortcuts:** Ctrl+C (quit), Ctrl+L (clear), Ctrl+R (refresh)
+- **Claude Code theme:** Dark mode with orange accents
+
+### 📟 Simple TUI
+
+Basic TUI interface:
+
+```bash
+python3 tui.py
+```
+
+### 💻 Interactive CLI (REPL Mode)
 
 ```bash
 python3 cli.py -i
@@ -36,9 +56,11 @@ python3 cli.py --interactive
 python3 cli.py repl
 ```
 
-This will start an interactive REPL with a beautiful terminal interface.
+This starts an interactive REPL with a beautiful terminal interface.
 
-### Command Mode
+### ⚡ Command Mode
+
+Quick commands without interactive mode:
 
 ```bash
 # Show status
@@ -52,13 +74,28 @@ python3 cli.py send <peer_id> "Hello!"
 
 # Broadcast message
 python3 cli.py broadcast "Hello everyone!"
+
+# Show inbox messages
+python3 cli.py inbox 20
+
+# Watch for new messages (live stream)
+python3 cli.py watch
 ```
 
 ## Features
 
-- 🎨 **Claude Code inspired design** - Dark theme with beautiful colors
+### Advanced TUI (advanced_tui.py)
+- 🎨 **Claude Code inspired design** - Dark theme with orange (#f0883e) accents
+- 📊 **Multi-panel layout** - Status, Peers, Messages panels
+- 🔄 **Real-time updates** - Auto-refreshing status and peer list
+- 💬 **Live message stream** - Watch messages appear in real-time
+- ⌨️ **Command history** - Navigate with arrow keys
+- 🎯 **Keyboard shortcuts** - Ctrl+C, Ctrl+L, Ctrl+R, F1
+- ✨ **Modern TUI** - Built with Textual framework
+
+### CLI & Simple TUI
+- 💻 **Interactive REPL mode** - Beautiful command-line interface
 - 📊 **Rich peer information** - Detailed peer status with color coding
-- 💬 **Interactive REPL mode** - Beautiful command-line interface
 - 🔍 **Automatic API port discovery** - Finds running nodes automatically
 - ✨ **Modern UI** - Panels, tables, and beautiful formatting
 
@@ -82,9 +119,36 @@ python3 cli.py status
 
 ## Commands
 
-- `status` - Show node status
-- `peers` - List all connected peers
+### In TUI/REPL mode:
+- `status` - Show detailed node status
+- `peers` - List all connected peers with details
 - `send <peer_id> <message>` - Send message to specific peer
 - `broadcast <message>` - Broadcast message to all peers
-- `help` - Show help (in interactive mode)
-- `exit` - Exit interactive mode
+- `inbox [n]` - Show last N messages (default: 20)
+- `watch` - Live stream incoming messages (CLI only)
+- `clear` - Clear message stream (TUI only)
+- `refresh` - Refresh status and peers (Advanced TUI only)
+- `help` - Show available commands
+- `quit` or `exit` - Exit
+
+### Keyboard Shortcuts (Advanced TUI):
+- `Ctrl+C` - Quit application
+- `Ctrl+L` - Clear message stream
+- `Ctrl+R` - Refresh status and peers
+- `F1` - Show help
+- `↑/↓` - Navigate command history
+
+## Comparison
+
+| Feature | CLI | Simple TUI | Advanced TUI |
+|---------|-----|------------|--------------|
+| Interactive mode | ✅ | ✅ | ✅ |
+| Command mode | ✅ | ❌ | ❌ |
+| Real-time panels | ❌ | ❌ | ✅ |
+| Auto-refresh | ❌ | ❌ | ✅ |
+| Message streaming | ✅ | ✅ | ✅ |
+| Command history | ❌ | ❌ | ✅ |
+| Keyboard shortcuts | ❌ | ❌ | ✅ |
+| Split-pane layout | ❌ | ❌ | ✅ |
+
+**Recommendation:** Use `advanced_tui.py` for the best experience!

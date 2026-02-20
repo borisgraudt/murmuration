@@ -68,6 +68,19 @@ enum ApiRequest {
     BundleImport { input_path: String },
     #[serde(rename = "bundle_info")]
     BundleInfo { bundle_path: String },
+
+    // ── Messenger extensions ──────────────────────────────────────────────────
+    #[serde(rename = "conversations")]
+    Conversations,
+
+    #[serde(rename = "conversation_history")]
+    ConversationHistory {
+        peer_id: String,
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default)]
+        limit: Option<usize>,
+    },
 }
 
 /// API response
@@ -340,6 +353,20 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
                 Err(e) => Ok(ApiResponse::error(format!("Failed to load bundle: {}", e))),
             }
         }
+        // ── Messenger extensions ──────────────────────────────────────────────
+        ApiRequest::Conversations => {
+            let convs = node.get_conversations().await;
+            Ok(ApiResponse::success(serde_json::json!({ "conversations": convs })))
+        }
+        ApiRequest::ConversationHistory { peer_id, since, limit } => {
+            let limit = limit.unwrap_or(50).clamp(1, 500);
+            let (next_since, messages) = node.get_conversation_history(&peer_id, since, limit).await;
+            Ok(ApiResponse::success(serde_json::json!({
+                "next_since": next_since,
+                "messages": messages
+            })))
+        }
+
         ApiRequest::BundleInfo { bundle_path } => {
             let path = std::path::Path::new(&bundle_path);
             match crate::bundle::MessageBundle::load(path) {

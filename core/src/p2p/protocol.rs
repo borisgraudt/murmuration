@@ -85,6 +85,14 @@ pub enum Message {
         found: bool,              // Whether content was found
         from_node: String,        // Node that responded (owner of content)
     },
+
+    /// Delivery acknowledgment — sent back by the recipient of a directed MeshMessage.
+    /// Old peers will treat this as an unknown message type and ignore it (backward compatible).
+    #[serde(rename = "message_ack")]
+    MessageAck {
+        message_id: String, // ID of the acknowledged MeshMessage
+        from: String,       // node_id of the acknowledging node
+    },
 }
 
 impl Message {
@@ -112,6 +120,7 @@ impl Message {
             Message::MeshMessage { .. } => "mesh_message",
             Message::ContentRequest { .. } => "content_request",
             Message::ContentResponse { .. } => "content_response",
+            Message::MessageAck { .. } => "message_ack",
         }
     }
 }

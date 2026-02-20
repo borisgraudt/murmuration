@@ -45,6 +45,31 @@ pub struct InboxMessage {
     pub message_id: Option<String>,
     pub bytes: usize,
     pub preview: String,
+    // --- Messenger extensions (serde(default) for backward compat with old sled records) ---
+    /// "dm:{min_id}:{max_id}" for DMs, "broadcast" for broadcasts
+    #[serde(default)]
+    pub conversation_id: String,
+    /// Full decoded message text (not truncated); None for binary payloads
+    #[serde(default)]
+    pub content: Option<String>,
+    /// True once the recipient sent a MessageAck back to us
+    #[serde(default)]
+    pub delivered: bool,
+}
+
+/// Compute a stable, canonical conversation ID from sender and optional recipient.
+/// Both sides of a DM will always compute the same ID.
+pub fn compute_conversation_id(from: &str, to: Option<&str>) -> String {
+    match to {
+        None => "broadcast".to_string(),
+        Some(peer) => {
+            if from <= peer {
+                format!("dm:{}:{}", from, peer)
+            } else {
+                format!("dm:{}:{}", peer, from)
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -124,6 +149,12 @@ pub struct Node {
     inbox: Arc<RwLock<VecDeque<InboxMessage>>>,
     inbox_next_seq: Arc<RwLock<u64>>,
     inbox_notify: Arc<Notify>,
+
+    /// Contact book (persisted in sled)
+    contact_store: crate::contact_store::ContactStore,
+
+    /// Broadcast channel for Messenger SSE events (new messages, peer events, delivery acks)
+    ws_event_tx: Arc<tokio::sync::broadcast::Sender<crate::messenger_types::MessengerEvent>>,
 }
 
 impl Node {
@@ -159,6 +190,9 @@ impl Node {
         let content_store = ContentStore::new(&data_dir)?;
         let name_registry = NameRegistry::with_storage(&data_dir)?;
         let message_store = MessageStore::new(&data_dir)?;
+        let contact_store = crate::contact_store::ContactStore::new(&data_dir)?;
+        let (ws_event_tx, _) = tokio::sync::broadcast::channel::<crate::messenger_types::MessengerEvent>(256);
+        let ws_event_tx = Arc::new(ws_event_tx);
 
         info!("Created new node with ID: {}", id);
 
@@ -199,6 +233,8 @@ impl Node {
             inbox: Arc::new(RwLock::new(VecDeque::new())),
             inbox_next_seq: Arc::new(RwLock::new(1)),
             inbox_notify: Arc::new(Notify::new()),
+            contact_store,
+            ws_event_tx,
         })
     }
 
@@ -227,6 +263,11 @@ impl Node {
         let _ = self.message_store.save(&msg);
 
         self.inbox_notify.notify_waiters();
+
+        // Broadcast to Messenger SSE subscribers (best-effort: ignore if no subscribers)
+        let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::NewMessage {
+            message: msg,
+        });
     }
 
     pub async fn list_inbox(&self, since: Option<u64>, limit: usize) -> (u64, Vec<InboxMessage>) {
@@ -303,6 +344,139 @@ impl Node {
     pub async fn list_names(&self) -> Vec<crate::naming::NameRecord> {
         self.name_registry.list().await
     }
+
+    // ─── Messenger API ────────────────────────────────────────────────────────
+
+    /// Return one ConversationSummary per unique conversation (last message per thread)
+    pub async fn get_conversations(&self) -> Vec<crate::messenger_types::ConversationSummary> {
+        let inbox = self.inbox.read().await;
+        let mut map: std::collections::HashMap<String, InboxMessage> = std::collections::HashMap::new();
+        for msg in inbox.iter() {
+            let key = msg.conversation_id.clone();
+            let entry = map.entry(key).or_insert_with(|| msg.clone());
+            if msg.seq > entry.seq {
+                *entry = msg.clone();
+            }
+        }
+        let mut result: Vec<crate::messenger_types::ConversationSummary> = map
+            .into_values()
+            .map(|msg| {
+                let peer_id = if msg.direction == "out" {
+                    msg.to.clone().unwrap_or_default()
+                } else {
+                    msg.from.clone()
+                };
+                crate::messenger_types::ConversationSummary {
+                    conversation_id: msg.conversation_id.clone(),
+                    peer_id,
+                    last_preview: msg.preview.clone(),
+                    last_timestamp: msg.timestamp.clone(),
+                    last_seq: msg.seq,
+                }
+            })
+            .collect();
+        result.sort_by(|a, b| b.last_seq.cmp(&a.last_seq));
+        result
+    }
+
+    /// Return paginated message history for a specific DM conversation
+    pub async fn get_conversation_history(
+        &self,
+        peer_id: &str,
+        since: Option<u64>,
+        limit: usize,
+    ) -> (u64, Vec<InboxMessage>) {
+        let target = compute_conversation_id(&self.id, Some(peer_id));
+        let since = since.unwrap_or(0);
+        let limit = limit.clamp(1, INBOX_MAX_MESSAGES);
+        let inbox = self.inbox.read().await;
+        let mut msgs: Vec<InboxMessage> = inbox
+            .iter()
+            .filter(|m| m.conversation_id == target && m.seq > since)
+            .cloned()
+            .collect();
+        if msgs.len() > limit {
+            msgs = msgs.split_off(msgs.len() - limit);
+        }
+        let next = msgs.last().map(|m| m.seq).unwrap_or(since);
+        (next, msgs)
+    }
+
+    /// Mark an outgoing message as delivered (called when MessageAck is received)
+    pub async fn mark_message_delivered(&self, message_id: &str) {
+        {
+            let mut inbox = self.inbox.write().await;
+            for msg in inbox.iter_mut() {
+                if msg.message_id.as_deref() == Some(message_id) {
+                    msg.delivered = true;
+                }
+            }
+        }
+        let _ = self.message_store.update_delivered(message_id);
+        let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::MessageDelivered {
+            message_id: message_id.to_string(),
+        });
+    }
+
+    /// Publish own profile to the mesh content store
+    pub async fn publish_profile(&self, display_name: String, bio: String) -> Result<()> {
+        let profile = serde_json::json!({
+            "node_id": self.id,
+            "display_name": display_name,
+            "bio": bio,
+            "updated_at": chrono::Utc::now().to_rfc3339(),
+        });
+        let url = format!("ely://{}/messenger/profile", self.id);
+        self.content_store.put(
+            &url,
+            serde_json::to_vec(&profile).map_err(MeshError::Serialization)?,
+        )
+    }
+
+    /// Fetch another node's profile from the mesh (with timeout)
+    pub async fn fetch_profile(
+        &self,
+        node_id: &str,
+        timeout_dur: Duration,
+    ) -> Result<Option<serde_json::Value>> {
+        let url = format!("ely://{}/messenger/profile", node_id);
+        match self.fetch_content(&url, timeout_dur).await? {
+            Some(bytes) => {
+                let v = serde_json::from_slice(&bytes).map_err(MeshError::Serialization)?;
+                Ok(Some(v))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Add or update a contact
+    pub async fn add_contact(&self, c: crate::contact_store::Contact) -> Result<()> {
+        self.contact_store.add_contact(&c)
+    }
+
+    /// List all contacts
+    pub async fn get_contacts(&self) -> Result<Vec<crate::contact_store::Contact>> {
+        self.contact_store.get_contacts()
+    }
+
+    /// Remove a contact by node_id; returns true if it existed
+    pub async fn remove_contact(&self, node_id: &str) -> Result<bool> {
+        self.contact_store.remove_contact(node_id)
+    }
+
+    /// Lookup a single contact
+    pub async fn get_contact(&self, node_id: &str) -> Result<Option<crate::contact_store::Contact>> {
+        self.contact_store.get_contact(node_id)
+    }
+
+    /// Clone the broadcast sender so messenger_api can subscribe
+    pub fn ws_event_sender(
+        &self,
+    ) -> tokio::sync::broadcast::Sender<crate::messenger_types::MessengerEvent> {
+        (*self.ws_event_tx).clone()
+    }
+
+    // ─── End Messenger API ────────────────────────────────────────────────────
 
     /// Start the node
     pub async fn start(&self) -> Result<()> {
@@ -438,6 +612,24 @@ impl Node {
             })
         };
 
+        // Start Messenger API (REST + SSE) on API port + 2
+        let messenger_handle = {
+            let node = self.clone();
+            tokio::spawn(async move {
+                // Wait for API server to bind and update api_addr
+                tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;
+
+                let api_port = node.get_api_addr().await.port();
+                let messenger_port = api_port.saturating_add(2);
+
+                info!("Starting Messenger API on port {}", messenger_port);
+
+                if let Err(e) = crate::messenger_api::start_messenger_api(node, messenger_port).await {
+                    error!("Messenger API error: {}", e);
+                }
+            })
+        };
+
         // Wait for shutdown signal
         self.wait_for_shutdown().await;
 
@@ -456,6 +648,7 @@ impl Node {
         discovery_handle.abort();
         api_handle.abort();
         web_gateway_handle.abort();
+        messenger_handle.abort();
 
         // Wait a bit for tasks to clean up
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
@@ -855,6 +1048,9 @@ impl Node {
         self.peer_manager.update_peer_last_seen(&peer_id).await;
 
         self.event_emitter.emit("connected", Some(&peer_id)).await;
+        let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::PeerConnected {
+            peer_id: peer_id.clone(),
+        });
 
         // Handle connection (this will block until connection closes)
         if let Err(e) = self.handle_connection(stream, peer_id.clone(), addr).await {
@@ -881,6 +1077,9 @@ impl Node {
             self.event_emitter
                 .emit("disconnected", Some(&peer_id))
                 .await;
+            let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::PeerDisconnected {
+                peer_id: peer_id.clone(),
+            });
         }
 
         Ok(())
@@ -1548,7 +1747,7 @@ impl Node {
                     let display_content = if content_str.len() > 150 {
                         format!("{}...", &content_str[..150])
                     } else {
-                        content_str
+                        content_str.clone()
                     };
 
                     info!(
@@ -1570,6 +1769,9 @@ impl Node {
                         message_id: Some(message_id.clone()),
                         bytes: payload.len(),
                         preview: display_content.clone(),
+                        conversation_id: compute_conversation_id(&peer_id, Some(&self.id)),
+                        content: Some(content_str),
+                        delivered: false,
                     })
                     .await;
                     self.event_emitter
@@ -1587,6 +1789,10 @@ impl Node {
                 Message::Close { reason } => {
                     info!("Peer {} closed connection: {}", peer_id, reason);
                     break;
+                }
+                Message::MessageAck { message_id, from } => {
+                    debug!("MessageAck received for {} from {}", message_id, from);
+                    self.mark_message_delivered(&message_id).await;
                 }
                 _ => {
                     debug!(
@@ -1814,6 +2020,8 @@ impl Clone for Node {
             inbox: self.inbox.clone(),
             inbox_next_seq: self.inbox_next_seq.clone(),
             inbox_notify: self.inbox_notify.clone(),
+            contact_store: self.contact_store.clone(),
+            ws_event_tx: self.ws_event_tx.clone(),
         }
     }
 }
@@ -1952,47 +2160,71 @@ impl Node {
                 .await;
             // Deliver to application layer (inbox for CLI)
             if let Some(packet) = decoded_packet {
-                let preview = String::from_utf8(packet.payload.clone())
+                let full_content = String::from_utf8(packet.payload.clone())
                     .unwrap_or_else(|_| format!("{} bytes (binary)", packet.payload.len()));
-                let preview = if preview.len() > 200 {
-                    format!("{}...", &preview[..200])
+                let preview = if full_content.len() > 200 {
+                    format!("{}...", &full_content[..200])
                 } else {
-                    preview
+                    full_content.clone()
                 };
+                let msg_from = packet.src.clone();
+                let msg_to = packet.dst.clone();
                 self.push_inbox(InboxMessage {
                     seq: 0,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                     direction: "in".to_string(),
                     kind: "mesh".to_string(),
                     peer: from_peer.to_string(),
-                    from: packet.src,
-                    to: packet.dst,
+                    from: msg_from.clone(),
+                    to: msg_to.clone(),
                     message_id: Some(message_id.clone()),
                     bytes: packet.payload.len(),
                     preview,
+                    conversation_id: compute_conversation_id(&msg_from, msg_to.as_deref()),
+                    content: Some(full_content),
+                    delivered: false,
                 })
                 .await;
             } else {
-                let preview = String::from_utf8(message.data.clone())
+                let full_content = String::from_utf8(message.data.clone())
                     .unwrap_or_else(|_| format!("{} bytes (binary)", message.data.len()));
-                let preview = if preview.len() > 200 {
-                    format!("{}...", &preview[..200])
+                let preview = if full_content.len() > 200 {
+                    format!("{}...", &full_content[..200])
                 } else {
-                    preview
+                    full_content.clone()
                 };
+                let msg_from = from_peer.to_string();
+                let msg_to = message.to.clone();
                 self.push_inbox(InboxMessage {
                     seq: 0,
                     timestamp: chrono::Utc::now().to_rfc3339(),
                     direction: "in".to_string(),
                     kind: "mesh".to_string(),
                     peer: from_peer.to_string(),
-                    from: from_peer.to_string(),
-                    to: message.to.clone(),
+                    from: msg_from.clone(),
+                    to: msg_to.clone(),
                     message_id: Some(message_id.clone()),
                     bytes: message.data.len(),
                     preview,
+                    conversation_id: compute_conversation_id(&msg_from, msg_to.as_deref()),
+                    content: Some(full_content),
+                    delivered: false,
                 })
                 .await;
+            }
+
+            // Send MessageAck back to the direct sender if this was a directed message
+            if !is_broadcast {
+                let senders = self.message_senders.read().await;
+                if let Some(ch) = senders.get(from_peer) {
+                    let ack = Message::MessageAck {
+                        message_id: message_id.clone(),
+                        from: self.id.clone(),
+                    };
+                    if let Err(e) = ch.tx.send(ack) {
+                        debug!("Could not send MessageAck to {}: {}", from_peer, e);
+                    }
+                }
             }
 
             // If it's a directed message (not broadcast), don't forward
@@ -2142,13 +2374,13 @@ impl Node {
     /// Send a mesh message to a specific peer or broadcast
     pub async fn send_mesh_message(&self, to: Option<String>, data: Vec<u8>) -> Result<String> {
         // Show message content for logging (before moving data)
-        let content_preview = String::from_utf8(data.clone())
+        let full_content = String::from_utf8(data.clone())
             .unwrap_or_else(|_| format!("{} bytes (binary)", data.len()));
-        let content_bytes_len = content_preview.len();
-        let content_display = if content_preview.len() > 50 {
-            format!("{}...", &content_preview[..50])
+        let content_bytes_len = full_content.len();
+        let content_display = if full_content.len() > 50 {
+            format!("{}...", &full_content[..50])
         } else {
-            content_preview
+            full_content.clone()
         };
 
         // Wrap into ElysiumPacket (future-proof for signatures/TOFU). Routing target remains MeshMessage.to.
@@ -2206,6 +2438,9 @@ impl Node {
             message_id: Some(message_id.clone()),
             bytes: content_bytes_len,
             preview: content_display.clone(),
+            conversation_id: compute_conversation_id(&self.id, to.as_deref()),
+            content: Some(full_content),
+            delivered: false,
         })
         .await;
 

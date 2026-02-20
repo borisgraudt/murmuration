@@ -18,6 +18,9 @@ pub mod p2p;
 mod peer_store;
 pub mod url_handler;
 pub mod utils;
+pub mod messenger_api;
+pub mod messenger_types;
+pub mod contact_store;
 pub mod web_gateway;
 
 pub use config::Config;
