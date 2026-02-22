@@ -1,4 +1,4 @@
-/// Test adaptive routing functionality
+/// Test adaptive routing functionality — including UCB1 bandit behaviour.
 extern crate meshlink_core;
 
 use meshlink_core::ai::router::{MeshMessage, Router};
@@ -159,5 +159,114 @@ async fn test_route_success_rate_impact() {
     assert_eq!(
         selected[0], "peer1",
         "Peer with better success rate should be selected"
+    );
+}
+
+// ─── UCB1-specific tests ──────────────────────────────────────────────────────
+
+/// During cold-start (n < UCB1_MIN_SAMPLES=5) a completely unvisited peer (n=0)
+/// must receive a larger exploration bonus than a peer with 3 samples, and therefore
+/// be ranked first when all other metrics are equal.
+#[tokio::test]
+async fn test_ucb1_cold_start_unvisited_first() {
+    let router = Router::new("test_node".to_string());
+
+    // peer_visited: 3 successes — still in cold-start, bonus = +0.5
+    let mut peer_visited =
+        PeerInfo::new("peer_visited".to_string(), "127.0.0.1:8081".parse().unwrap());
+    peer_visited.metrics.update_latency(Duration::from_millis(50));
+    peer_visited.state = ConnectionState::Connected;
+    for _ in 0..3 {
+        router
+            .record_route_success("peer_visited", Duration::from_millis(50))
+            .await;
+    }
+
+    // peer_new: no routing history at all — cold-start bonus = +1.0
+    let mut peer_new = PeerInfo::new("peer_new".to_string(), "127.0.0.1:8082".parse().unwrap());
+    peer_new.metrics.update_latency(Duration::from_millis(50)); // same heuristic
+    peer_new.state = ConnectionState::Connected;
+
+    let message = MeshMessage::new("sender".to_string(), None, b"test".to_vec());
+    let selected = router
+        .get_best_forward_peers(&message, &[peer_new, peer_visited], 1)
+        .await;
+
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected[0], "peer_new",
+        "Unvisited peer should be selected first (exploration bonus +1.0 > +0.5)"
+    );
+}
+
+/// After UCB1 warmup (n >= 5) exploitation dominates: a peer with consistently
+/// high rewards must outrank a peer with consistently low rewards.
+#[tokio::test]
+async fn test_ucb1_exploitation() {
+    let router = Router::new("test_node".to_string());
+
+    // peer_good: 10 fast deliveries → avg_reward ≈ 0.98
+    let mut peer_good =
+        PeerInfo::new("peer_good".to_string(), "127.0.0.1:8081".parse().unwrap());
+    peer_good.state = ConnectionState::Connected;
+    for _ in 0..10 {
+        router
+            .record_route_success("peer_good", Duration::from_millis(10))
+            .await;
+    }
+
+    // peer_bad: 10 failures → avg_reward = 0.0
+    let mut peer_bad = PeerInfo::new("peer_bad".to_string(), "127.0.0.1:8082".parse().unwrap());
+    peer_bad.state = ConnectionState::Connected;
+    for _ in 0..10 {
+        router.record_route_failure("peer_bad").await;
+    }
+
+    let message = MeshMessage::new("sender".to_string(), None, b"test".to_vec());
+    let selected = router
+        .get_best_forward_peers(&message, &[peer_bad, peer_good], 1)
+        .await;
+
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected[0], "peer_good",
+        "Peer with high reward must be preferred after UCB1 warmup"
+    );
+}
+
+/// UCB1 must force exploration of an unvisited peer even when another peer
+/// has accumulated many high-reward samples (whose shrinking exploration term
+/// makes the cold-start bonus competitive).
+#[tokio::test]
+async fn test_ucb1_exploration_new_peer() {
+    let router = Router::new("test_node".to_string());
+
+    // peer_veteran: 50 successes → UCB1 exploration term shrinks to ~0.4
+    let mut peer_veteran =
+        PeerInfo::new("peer_veteran".to_string(), "127.0.0.1:8081".parse().unwrap());
+    peer_veteran.metrics.update_latency(Duration::from_millis(10));
+    peer_veteran.state = ConnectionState::Connected;
+    for _ in 0..50 {
+        router
+            .record_route_success("peer_veteran", Duration::from_millis(10))
+            .await;
+    }
+
+    // peer_new: never selected → cold-start bonus +1.0 added to default heuristic 0.5
+    let mut peer_new =
+        PeerInfo::new("peer_new".to_string(), "127.0.0.1:8082".parse().unwrap());
+    peer_new.state = ConnectionState::Connected;
+    // No latency data → heuristic = 0.5; total score = 1.5
+
+    let message = MeshMessage::new("sender".to_string(), None, b"test".to_vec());
+    let selected = router
+        .get_best_forward_peers(&message, &[peer_veteran, peer_new], 1)
+        .await;
+
+    // peer_veteran UCB1 ≈ 0.98 + sqrt(2*ln(50)/50) ≈ 1.37 < 1.5 (peer_new cold-start)
+    assert_eq!(selected.len(), 1);
+    assert_eq!(
+        selected[0], "peer_new",
+        "UCB1 must explore new peer over over-sampled veteran once exploration term shrinks"
     );
 }
