@@ -42,9 +42,14 @@ impl ContactStore {
     }
 
     pub fn get_contact(&self, node_id: &str) -> Result<Option<Contact>> {
-        match self.db.get(node_id.as_bytes()).map_err(|e| MeshError::Storage(format!("get_contact: {}", e)))? {
+        match self
+            .db
+            .get(node_id.as_bytes())
+            .map_err(|e| MeshError::Storage(format!("get_contact: {}", e)))?
+        {
             Some(val) => {
-                let c = serde_json::from_slice::<Contact>(&val).map_err(MeshError::Serialization)?;
+                let c =
+                    serde_json::from_slice::<Contact>(&val).map_err(MeshError::Serialization)?;
                 Ok(Some(c))
             }
             None => Ok(None),
@@ -52,7 +57,8 @@ impl ContactStore {
     }
 
     pub fn remove_contact(&self, node_id: &str) -> Result<bool> {
-        let removed = self.db
+        let removed = self
+            .db
             .remove(node_id.as_bytes())
             .map_err(|e| MeshError::Storage(format!("remove_contact: {}", e)))?;
         Ok(removed.is_some())
@@ -61,6 +67,8 @@ impl ContactStore {
 
 impl Clone for ContactStore {
     fn clone(&self) -> Self {
-        Self { db: self.db.clone() }
+        Self {
+            db: self.db.clone(),
+        }
     }
 }

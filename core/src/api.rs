@@ -356,11 +356,18 @@ async fn handle_request(request: &str, node: &Node) -> Result<ApiResponse> {
         // ── Messenger extensions ──────────────────────────────────────────────
         ApiRequest::Conversations => {
             let convs = node.get_conversations().await;
-            Ok(ApiResponse::success(serde_json::json!({ "conversations": convs })))
+            Ok(ApiResponse::success(
+                serde_json::json!({ "conversations": convs }),
+            ))
         }
-        ApiRequest::ConversationHistory { peer_id, since, limit } => {
+        ApiRequest::ConversationHistory {
+            peer_id,
+            since,
+            limit,
+        } => {
             let limit = limit.unwrap_or(50).clamp(1, 500);
-            let (next_since, messages) = node.get_conversation_history(&peer_id, since, limit).await;
+            let (next_since, messages) =
+                node.get_conversation_history(&peer_id, since, limit).await;
             Ok(ApiResponse::success(serde_json::json!({
                 "next_since": next_since,
                 "messages": messages

@@ -52,8 +52,7 @@ impl MessageStore {
             if let Ok(mut msg) = serde_json::from_slice::<InboxMessage>(&val) {
                 if msg.message_id.as_deref() == Some(message_id) {
                     msg.delivered = true;
-                    let updated =
-                        serde_json::to_vec(&msg).map_err(MeshError::Serialization)?;
+                    let updated = serde_json::to_vec(&msg).map_err(MeshError::Serialization)?;
                     self.db
                         .insert(key, updated)
                         .map_err(|e| MeshError::Storage(format!("update_delivered: {}", e)))?;

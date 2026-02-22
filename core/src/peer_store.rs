@@ -38,7 +38,7 @@ pub fn load_cached_peers(data_dir: &Path) -> Result<Vec<SocketAddr>> {
             // Filter out HTTP/API/Gateway ports (17000-17999) - these are not P2P ports
             // P2P ports are typically 8080-8099 or other custom ports
             let port = addr.port();
-            if port >= 17000 && port <= 17999 {
+            if (17000..=17999).contains(&port) {
                 // Skip HTTP/API/Gateway ports - they're not P2P ports
                 continue;
             }

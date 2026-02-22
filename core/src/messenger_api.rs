@@ -44,7 +44,10 @@ type Resp = Response<BoxBody>;
 fn cors_headers(builder: hyper::http::response::Builder) -> hyper::http::response::Builder {
     builder
         .header("Access-Control-Allow-Origin", "*")
-        .header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        .header(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, DELETE, OPTIONS",
+        )
         .header("Access-Control-Allow-Headers", "Content-Type")
 }
 
@@ -57,7 +60,10 @@ fn json_resp(status: StatusCode, body: Vec<u8>) -> Resp {
 }
 
 fn json_ok(value: serde_json::Value) -> Resp {
-    json_resp(StatusCode::OK, serde_json::to_vec(&value).unwrap_or_default())
+    json_resp(
+        StatusCode::OK,
+        serde_json::to_vec(&value).unwrap_or_default(),
+    )
 }
 
 fn json_err(status: StatusCode, msg: &str) -> Resp {
@@ -227,7 +233,9 @@ async fn get_conversations(node: &Node) -> Resp {
 
 async fn get_conversation_history(peer_id: &str, query: &str, node: &Node) -> Resp {
     let since = parse_query_u64(query, "since");
-    let limit = parse_query_usize(query, "limit").unwrap_or(50).clamp(1, 500);
+    let limit = parse_query_usize(query, "limit")
+        .unwrap_or(50)
+        .clamp(1, 500);
     let (next_since, messages) = node.get_conversation_history(peer_id, since, limit).await;
     json_ok(serde_json::json!({
         "next_since": next_since,
@@ -250,7 +258,10 @@ async fn post_send(req: Request<hyper::body::Incoming>, node: &Node) -> Resp {
         Ok(r) => r,
         Err(e) => return json_err(StatusCode::BAD_REQUEST, &format!("invalid JSON: {}", e)),
     };
-    match node.send_mesh_message(req.to, req.message.into_bytes()).await {
+    match node
+        .send_mesh_message(req.to, req.message.into_bytes())
+        .await
+    {
         Ok(id) => json_ok(serde_json::json!({ "message_id": id })),
         Err(e) => json_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     }
@@ -352,7 +363,9 @@ fn get_sse(node: &Node) -> Resp {
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
-async fn read_body(req: Request<hyper::body::Incoming>) -> std::result::Result<bytes::Bytes, String> {
+async fn read_body(
+    req: Request<hyper::body::Incoming>,
+) -> std::result::Result<bytes::Bytes, String> {
     req.collect()
         .await
         .map(|c| c.to_bytes())

@@ -172,9 +172,13 @@ async fn test_ucb1_cold_start_unvisited_first() {
     let router = Router::new("test_node".to_string());
 
     // peer_visited: 3 successes — still in cold-start, bonus = +0.5
-    let mut peer_visited =
-        PeerInfo::new("peer_visited".to_string(), "127.0.0.1:8081".parse().unwrap());
-    peer_visited.metrics.update_latency(Duration::from_millis(50));
+    let mut peer_visited = PeerInfo::new(
+        "peer_visited".to_string(),
+        "127.0.0.1:8081".parse().unwrap(),
+    );
+    peer_visited
+        .metrics
+        .update_latency(Duration::from_millis(50));
     peer_visited.state = ConnectionState::Connected;
     for _ in 0..3 {
         router
@@ -206,8 +210,7 @@ async fn test_ucb1_exploitation() {
     let router = Router::new("test_node".to_string());
 
     // peer_good: 10 fast deliveries → avg_reward ≈ 0.98
-    let mut peer_good =
-        PeerInfo::new("peer_good".to_string(), "127.0.0.1:8081".parse().unwrap());
+    let mut peer_good = PeerInfo::new("peer_good".to_string(), "127.0.0.1:8081".parse().unwrap());
     peer_good.state = ConnectionState::Connected;
     for _ in 0..10 {
         router
@@ -242,9 +245,13 @@ async fn test_ucb1_exploration_new_peer() {
     let router = Router::new("test_node".to_string());
 
     // peer_veteran: 50 successes → UCB1 exploration term shrinks to ~0.4
-    let mut peer_veteran =
-        PeerInfo::new("peer_veteran".to_string(), "127.0.0.1:8081".parse().unwrap());
-    peer_veteran.metrics.update_latency(Duration::from_millis(10));
+    let mut peer_veteran = PeerInfo::new(
+        "peer_veteran".to_string(),
+        "127.0.0.1:8081".parse().unwrap(),
+    );
+    peer_veteran
+        .metrics
+        .update_latency(Duration::from_millis(10));
     peer_veteran.state = ConnectionState::Connected;
     for _ in 0..50 {
         router
@@ -253,8 +260,7 @@ async fn test_ucb1_exploration_new_peer() {
     }
 
     // peer_new: never selected → cold-start bonus +1.0 added to default heuristic 0.5
-    let mut peer_new =
-        PeerInfo::new("peer_new".to_string(), "127.0.0.1:8082".parse().unwrap());
+    let mut peer_new = PeerInfo::new("peer_new".to_string(), "127.0.0.1:8082".parse().unwrap());
     peer_new.state = ConnectionState::Connected;
     // No latency data → heuristic = 0.5; total score = 1.5
 

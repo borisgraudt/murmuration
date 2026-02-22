@@ -14,7 +14,8 @@ use tokio::runtime::Runtime;
 
 fn make_connected_peer(id: &str, port: u16, latency_ms: u64, uptime_secs: u64) -> PeerInfo {
     let mut peer = PeerInfo::new(id.to_string(), format!("127.0.0.1:{port}").parse().unwrap());
-    peer.metrics.update_latency(Duration::from_millis(latency_ms));
+    peer.metrics
+        .update_latency(Duration::from_millis(latency_ms));
     peer.metrics.uptime = Duration::from_secs(uptime_secs);
     peer.state = ConnectionState::Connected;
     peer
@@ -131,9 +132,7 @@ fn bench_dedup(c: &mut Criterion) {
     });
 
     c.bench_function("should_process_duplicate", |b| {
-        b.iter(|| {
-            rt.block_on(async { black_box(router.should_process(black_box(&msg)).await) })
-        })
+        b.iter(|| rt.block_on(async { black_box(router.should_process(black_box(&msg)).await) }))
     });
 }
 

@@ -22,7 +22,7 @@ pub struct ConversationSummary {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum MessengerEvent {
     /// A new message arrived or was sent
-    NewMessage { message: InboxMessage },
+    NewMessage { message: Box<InboxMessage> },
     /// A peer connected to our node
     PeerConnected { peer_id: String },
     /// A peer disconnected from our node

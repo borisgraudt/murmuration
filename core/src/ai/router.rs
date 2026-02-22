@@ -113,7 +113,7 @@ pub struct Router {
     seen_messages: Arc<RwLock<HashMap<String, Instant>>>, // message_id -> timestamp
     message_cache: Arc<RwLock<HashMap<String, MeshMessage>>>, // Cache for deduplication
     route_history: Arc<RwLock<HashMap<String, RouteStats>>>, // peer_id -> heuristic stats
-    ucb_state: Arc<RwLock<UcbState>>,                        // UCB1 bandit state
+    ucb_state: Arc<RwLock<UcbState>>,                     // UCB1 bandit state
 }
 
 /// Statistics for a route (peer)
@@ -342,10 +342,8 @@ impl Router {
                 let score = if n_i < UCB1_MIN_SAMPLES {
                     // Cold-start: heuristic score + exploration bonus.
                     // Unvisited peers (n_i == 0) get +1.0 so they are always tried first.
-                    let heuristic = Self::calculate_peer_score(
-                        &peer.metrics,
-                        route_history.get(&peer.node_id),
-                    );
+                    let heuristic =
+                        Self::calculate_peer_score(&peer.metrics, route_history.get(&peer.node_id));
                     let bonus = if n_i == 0 { 1.0 } else { 0.5 };
                     heuristic + bonus
                 } else {

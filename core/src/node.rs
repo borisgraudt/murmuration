@@ -164,7 +164,7 @@ impl Node {
         let data_dir = config.data_dir.clone().unwrap_or_else(|| {
             std::path::PathBuf::from(format!(".ely/node-{}", config.listen_addr.port()))
         });
-        
+
         // Warn if data_dir is explicitly set and might conflict with another node
         if config.data_dir.is_some() {
             warn!(
@@ -172,12 +172,12 @@ impl Node {
                 data_dir.display()
             );
         }
-        
+
         config.data_dir = Some(data_dir.clone());
 
         let ident = identity::load_or_create(&data_dir)?;
         let id = ident.node_id;
-        
+
         // Log data directory for debugging
         info!("Node data directory: {}", data_dir.display());
 
@@ -191,7 +191,8 @@ impl Node {
         let name_registry = NameRegistry::with_storage(&data_dir)?;
         let message_store = MessageStore::new(&data_dir)?;
         let contact_store = crate::contact_store::ContactStore::new(&data_dir)?;
-        let (ws_event_tx, _) = tokio::sync::broadcast::channel::<crate::messenger_types::MessengerEvent>(256);
+        let (ws_event_tx, _) =
+            tokio::sync::broadcast::channel::<crate::messenger_types::MessengerEvent>(256);
         let ws_event_tx = Arc::new(ws_event_tx);
 
         info!("Created new node with ID: {}", id);
@@ -265,9 +266,11 @@ impl Node {
         self.inbox_notify.notify_waiters();
 
         // Broadcast to Messenger SSE subscribers (best-effort: ignore if no subscribers)
-        let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::NewMessage {
-            message: msg,
-        });
+        let _ = self
+            .ws_event_tx
+            .send(crate::messenger_types::MessengerEvent::NewMessage {
+                message: Box::new(msg),
+            });
     }
 
     pub async fn list_inbox(&self, since: Option<u64>, limit: usize) -> (u64, Vec<InboxMessage>) {
@@ -350,7 +353,8 @@ impl Node {
     /// Return one ConversationSummary per unique conversation (last message per thread)
     pub async fn get_conversations(&self) -> Vec<crate::messenger_types::ConversationSummary> {
         let inbox = self.inbox.read().await;
-        let mut map: std::collections::HashMap<String, InboxMessage> = std::collections::HashMap::new();
+        let mut map: std::collections::HashMap<String, InboxMessage> =
+            std::collections::HashMap::new();
         for msg in inbox.iter() {
             let key = msg.conversation_id.clone();
             let entry = map.entry(key).or_insert_with(|| msg.clone());
@@ -413,9 +417,11 @@ impl Node {
             }
         }
         let _ = self.message_store.update_delivered(message_id);
-        let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::MessageDelivered {
-            message_id: message_id.to_string(),
-        });
+        let _ = self
+            .ws_event_tx
+            .send(crate::messenger_types::MessengerEvent::MessageDelivered {
+                message_id: message_id.to_string(),
+            });
     }
 
     /// Publish own profile to the mesh content store
@@ -465,7 +471,10 @@ impl Node {
     }
 
     /// Lookup a single contact
-    pub async fn get_contact(&self, node_id: &str) -> Result<Option<crate::contact_store::Contact>> {
+    pub async fn get_contact(
+        &self,
+        node_id: &str,
+    ) -> Result<Option<crate::contact_store::Contact>> {
         self.contact_store.get_contact(node_id)
     }
 
@@ -624,7 +633,9 @@ impl Node {
 
                 info!("Starting Messenger API on port {}", messenger_port);
 
-                if let Err(e) = crate::messenger_api::start_messenger_api(node, messenger_port).await {
+                if let Err(e) =
+                    crate::messenger_api::start_messenger_api(node, messenger_port).await
+                {
                     error!("Messenger API error: {}", e);
                 }
             })
@@ -1048,9 +1059,11 @@ impl Node {
         self.peer_manager.update_peer_last_seen(&peer_id).await;
 
         self.event_emitter.emit("connected", Some(&peer_id)).await;
-        let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::PeerConnected {
-            peer_id: peer_id.clone(),
-        });
+        let _ = self
+            .ws_event_tx
+            .send(crate::messenger_types::MessengerEvent::PeerConnected {
+                peer_id: peer_id.clone(),
+            });
 
         // Handle connection (this will block until connection closes)
         if let Err(e) = self.handle_connection(stream, peer_id.clone(), addr).await {
@@ -1077,9 +1090,11 @@ impl Node {
             self.event_emitter
                 .emit("disconnected", Some(&peer_id))
                 .await;
-            let _ = self.ws_event_tx.send(crate::messenger_types::MessengerEvent::PeerDisconnected {
-                peer_id: peer_id.clone(),
-            });
+            let _ =
+                self.ws_event_tx
+                    .send(crate::messenger_types::MessengerEvent::PeerDisconnected {
+                        peer_id: peer_id.clone(),
+                    });
         }
 
         Ok(())
