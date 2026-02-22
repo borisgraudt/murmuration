@@ -1,148 +1,171 @@
-## Elysium
+# Elysium: A Delay-Tolerant Mesh Network with UCB1 Adaptive Routing
 
-**The Internet Without Internet**
+Elysium is a decentralized, censorship-resistant overlay network designed to
+operate without fixed infrastructure. Nodes communicate directly over TCP,
+discover peers via UDP multicast, and route messages using a
+**UCB1 multi-armed bandit** algorithm that learns from delivery outcomes at
+runtime.
 
-Decentralized, censorship-resistant mesh network. Works offline.
+**Target scenarios:** protest coordination, disaster relief, and bypassing
+censorship — anywhere IP connectivity is unreliable or actively blocked.
 
-### What is this?
+---
 
-Not a messenger. Not blockchain. **A new network layer.**
+## Key properties
 
-- ✅ Works without internet
-- ✅ Censorship-resistant
-- ✅ End-to-end encrypted
-- ✅ Delay-tolerant (hours/days)
-- ✅ Content-addressed
+| Property | Mechanism |
+|---|---|
+| Infrastructure-free | Direct TCP connections; UDP multicast discovery |
+| End-to-end encryption | RSA-2048 key exchange + AES-256-GCM session cipher |
+| Adaptive routing | UCB1 bandit (Auer et al., 2002) over peer reward history |
+| Content addressing | `ely://<sha256(pubkey)>/<path>` — self-verifying URLs |
+| Delay tolerance | Store-and-forward bundle protocol (USB/file transfer) |
+| Human-readable names | Local name registry: `alice` → node\_id |
 
-**Use cases:** Protest coordination, emergency communication, bypassing censorship.
+---
 
-### Features
+## Architecture
 
-- 🔐 **E2E Encryption** - RSA + AES-GCM
-- 🌐 **P2P Mesh** - Direct connections, no servers
-- 📡 **Auto-Discovery** - mDNS local network discovery
-- 💬 **Messaging** - Direct, broadcast, persistent inbox
-- 📦 **Content Addressing** - Publish/fetch via `ely://` URLs
-- 🏷️ **Naming System** - Human-readable names
-- 💾 **Store-and-Forward** - Bundle protocol for offline transfer
-- 🔄 **Auto-Reconnect** - Resilient connections
-- 📊 **Live Streaming** - Real-time message watch
-
-### Repo layout
-
-```text
-core/         Rust node + binaries (core, cli, viz, ely)
-python_cli/   Python CLI (Claude Code-ish terminal UI)
-web/frontend/ Static web topology (GitHub Pages-ready)
-docs/         Protocol + architecture notes
-scripts/      Local run helpers
+```
+┌──────────────────────────────────────────────┐
+│  Applications  (messaging, content, naming)  │
+├──────────────────────────────────────────────┤
+│  Routing       (UCB1 adaptive + flooding)    │
+├──────────────────────────────────────────────┤
+│  Identity      (RSA-2048, node_id = SHA256)  │
+├──────────────────────────────────────────────┤
+│  Transport     (TCP, UDP multicast)          │
+└──────────────────────────────────────────────┘
 ```
 
-### Quick demo
+**Peer selection** (after warm-up, n ≥ 5 samples per peer):
 
-**Start a node:**
-```bash
-ely start 8080
-# Or run in background (daemon mode):
-ely start 8080 -d
+```
+score(i) = μ_i + sqrt( 2 · ln(N) / n_i )
 ```
 
-**Connect another node:**
-```bash
-ely start 8081 127.0.0.1:8080
-# Or run in background:
-ely start 8081 127.0.0.1:8080 -d
+where μ\_i is the incremental-average delivery reward for peer *i*,
+N is the total number of routing decisions, and n\_i is the number of
+times peer *i* has been selected. During warm-up the heuristic score
+(latency + uptime + reliability) is used with an exploration bonus
+that forces all peers to be tried at least once.
+
+Rewards: `r = clamp(1 − 2·latency_s,  0.5, 1.0)` on success; `r = 0` on failure.
+
+---
+
+## Repository layout
+
+```
+core/            Rust implementation (node, CLI, benchmarks, tests)
+  src/
+    ai/          UCB1 router, stats collector, routing logger
+    p2p/         Protocol frames, encryption, peer manager, discovery
+    node.rs      Core event loop (~1400 lines)
+    api.rs       JSON-RPC TCP API
+    web_gateway.rs  HTTP gateway for ely:// URLs
+    bundle.rs    Store-and-forward protocol
+  benches/       Criterion benchmarks (routing.rs)
+  tests/         Integration and unit tests
+python_cli/      Python TUI (Rich) — alternative interface
+web/frontend/    Static topology dashboard
+docs/            Architecture, protocol spec, quickstart
+scripts/         Demo helpers
 ```
 
-**Send messages:**
-```bash
-# In another terminal
-MESHLINK_API_PORT=17080 cargo run --bin ely -- broadcast "hello mesh"
-MESHLINK_API_PORT=17080 cargo run --bin ely -- inbox 10
-MESHLINK_API_PORT=17080 cargo run --bin ely -- watch
-```
+---
 
-**Publish content:**
-```bash
-MESHLINK_API_PORT=17080 cargo run --bin ely -- publish site/index.html "<h1>Hello World</h1>"
-MESHLINK_API_PORT=17080 cargo run --bin ely -- fetch ely://<node_id>/site/index.html
-```
+## Installation
 
-**Register names:**
-```bash
-MESHLINK_API_PORT=17080 cargo run --bin ely -- name register alice <node_id>
-MESHLINK_API_PORT=17080 cargo run --bin ely -- name resolve alice
-```
-
-**Export/import bundles:**
-```bash
-MESHLINK_API_PORT=17080 cargo run --bin ely -- bundle export /tmp/messages.bundle
-MESHLINK_API_PORT=17081 cargo run --bin ely -- bundle import /tmp/messages.bundle
-```
-
-**That's it.** No servers, no cloud, no accounts.
-
-### Installation
-
-**Option 1: Install from source (recommended)**
+**From source:**
 ```bash
 git clone https://github.com/borisgraudt/elysium.git
 cd elysium
-make install
+make install          # builds and installs the `ely` binary
 ```
 
-**Option 2: Install from GitHub**
+**Via cargo:**
 ```bash
-cargo install --git https://github.com/borisgraudt/elysium.git --package meshlink_core --bin ely
+cargo install --git https://github.com/borisgraudt/elysium.git \
+  --package meshlink_core --bin ely
 ```
 
-**Option 3: Use Docker**
-```bash
-docker pull ghcr.io/borisgraudt/elysium:main
-```
-
-**Then run:**
-```bash
-ely start 8080
-```
-
-No `MESHLINK_API_PORT` needed! CLI auto-discovers the running node.
-
-### Notes (frugal but important)
-
-- **API port formula**: `MESHLINK_API_PORT = 9000 + P2P_PORT` (e.g. 8080 → 17080).
-- If you see `Address already in use`, stop old nodes: `killall core` (macOS/Linux).
-- If peers don’t connect, see `docs/TROUBLESHOOTING.md`.
-
-### Documentation
-
-- **[Installation](INSTALL.md)** — complete install guide
-- **[Quick Demo](docs/DEMO.md)** — 10-minute full feature test
-- **[Quickstart](docs/QUICKSTART.md)** — getting started guide
-- **[Protocol Spec](docs/PROTOCOL.md)** — wire protocol, addressing, security
-- **[Architecture](docs/ARCHITECTURE.md)** — layers, components, design
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** — common issues
-
-### CI / Pages
-
-- Rust CI: `.github/workflows/rust.yml`
-- GitHub Pages deploy: `.github/workflows/pages.yml` (deploys `web/frontend/`)
-- GitHub Packages (GHCR): `.github/workflows/packages.yml` (pushes Docker image to `ghcr.io/<owner>/<repo>`)
-
-### GitHub Packages (GHCR) usage
-
-Pull:
-
+**Docker:**
 ```bash
 docker pull ghcr.io/borisgraudt/elysium:main
-```
-
-Run a node (example P2P port 8080):
-
-```bash
-docker run --rm -it \
-  -p 8080:8080 \
-  -p 9998:9998/udp \
+docker run --rm -it -p 8080:8080 -p 9998:9998/udp \
   ghcr.io/borisgraudt/elysium:main start 8080
 ```
 
+---
+
+## Quick demo (3 nodes, one machine)
+
+```bash
+# Terminal 1 — bootstrap node
+ely start 8080 --gateway 8000
+
+# Terminal 2
+ely start 8081 127.0.0.1:8080 --gateway 8001
+
+# Terminal 3
+ely start 8082 127.0.0.1:8081 --gateway 8002
+
+# Publish content (from node 1)
+MESHLINK_API_PORT=17080 ely publish site/hello.html "<h1>Hello Mesh</h1>"
+
+# Fetch across the mesh (from node 3)
+MESHLINK_API_PORT=17082 ely fetch ely://<node1_id>/site/hello.html
+
+# View in browser
+open http://localhost:8000/ely/<node1_id>/site/hello.html
+
+# Broadcast message
+MESHLINK_API_PORT=17080 ely broadcast "hello from node 1"
+
+# Offline bundle transfer (USB simulation)
+MESHLINK_API_PORT=17080 ely bundle export /tmp/msgs.bundle
+MESHLINK_API_PORT=17082 ely bundle import /tmp/msgs.bundle
+```
+
+API port formula: `MESHLINK_API_PORT = 9000 + P2P_PORT` (e.g. 8080 → 17080).
+
+---
+
+## Benchmarks
+
+```bash
+cargo bench --bench routing
+# HTML report: target/criterion/routing/report/index.html
+```
+
+Benchmarks cover: `calculate_peer_score`, cold-start peer selection (N=4/8/16/24),
+UCB1 peer selection after warmup, and message deduplication.
+
+---
+
+## Tests
+
+```bash
+cargo test --release
+```
+
+Key test files:
+- `tests/test_routing_adaptive.rs` — UCB1 exploration, exploitation, cold-start
+- `tests/test_multi_node.rs` — 3-node and 5-node mesh formation
+- `tests/test_stability.rs` — timeout, error handling, reconnect
+
+---
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — layer model, component diagram
+- [Protocol Spec](docs/PROTOCOL.md) — wire format, message types, routing
+- [Quickstart](docs/QUICKSTART.md) — step-by-step setup
+- [Troubleshooting](docs/TROUBLESHOOTING.md) — common issues
+
+---
+
+## License
+
+MIT
