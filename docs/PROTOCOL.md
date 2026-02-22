@@ -1,7 +1,7 @@
-# Elysium Protocol v0.1
+# Elysium Protocol v0.2
 
-**Status:** Draft  
-**Date:** 2025-01-07
+**Status:** Draft
+**Date:** 2026-02-23
 
 ---
 
@@ -108,17 +108,75 @@ NameAnnounce  - name registration
 
 ## 4. Routing
 
-**Mesh forwarding:**
-- AI-based peer selection (latency, uptime)
-- TTL countdown (max 8 hops)
-- Path tracking (loop prevention)
-- Best-effort delivery
+### 4.1 UCB1 Adaptive Peer Selection
 
-**Store-and-forward:**
-- Queue messages when offline
-- Export as bundle (USB/SD)
-- Import on destination network
-- Expiry: 7 days
+Elysium selects forwarding peers using the **UCB1 multi-armed bandit** algorithm
+(Auer et al., 2002). Each connected peer is treated as an arm; the reward signal
+reflects delivery speed and success.
+
+**Score function (post warm-up, n_i ≥ 5):**
+
+```
+score(i) = μ_i + sqrt( C · ln(N) / n_i )
+
+  μ_i  — incremental average reward for peer i
+  N    — total routing selections across all peers
+  n_i  — times peer i has been selected
+  C    — exploration constant (default: 2.0)
+```
+
+**Reward function:**
+
+```
+r = clamp(1 − 2 · latency_secs,  0.5, 1.0)   on delivery success
+r = 0.0                                        on failure / timeout
+```
+
+**Cold-start (n_i < 5):** heuristic score (latency + uptime + reliability)
+plus an exploration bonus of +1.0 for unvisited peers and +0.5 for partially
+sampled peers. This guarantees every peer is tried before UCB1 takes over.
+
+**Reward recording:** `record_route_success(peer, latency)` and
+`record_route_failure(peer)` update both the UCB1 bandit state and the
+heuristic history atomically.
+
+### 4.2 Message Forwarding
+
+```
+MeshMessage {
+  from:       string          # originating node_id
+  to:         Option<string>  # destination node_id; None = broadcast
+  data:       bytes
+  message_id: UUID v4
+  ttl:        u8              # decremented at each hop (default: 10)
+  path:       [string]        # visited node_ids — loop detection
+}
+```
+
+Processing pipeline:
+1. Drop if TTL == 0.
+2. Drop if `message_id` was seen within the past 60 s.
+3. Drop if `our_node_id` appears in `path`.
+4. Deliver locally if `to == our_node_id` or broadcast.
+5. Select forward peers via UCB1 (or flooding for broadcasts).
+6. Decrement TTL, append `our_node_id` to `path`, forward.
+
+### 4.3 Store-and-Forward (Bundle Protocol)
+
+```
+Bundle {
+  version:    u8
+  created_at: timestamp
+  expires_at: timestamp       # default: created_at + 30 days
+  messages:   [MeshMessage]
+}
+```
+
+Bundles are serialised to a single file for physical transfer (USB, SD card).
+On import, each message is replayed through the normal processing pipeline.
+
+**Use case:** two mesh islands with no real-time link exchange bundles
+periodically; latency is measured in hours to days.
 
 ---
 
