@@ -1,5 +1,6 @@
 /// Routing logic for mesh messages
-/// Implements flooding-based routing for MVP
+/// Implements UCB1 (Upper Confidence Bound) adaptive routing.
+/// Reference: Auer et al., "Finite-time Analysis of the Multiarmed Bandit Problem", 2002.
 use crate::error::{MeshError, Result};
 use crate::p2p::protocol::Message;
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tracing::debug;
+
+/// UCB1 exploration constant (standard value = 2.0).
+const UCB1_C: f64 = 2.0;
+/// Number of selections required before switching from heuristic warm-up to pure UCB1.
+const UCB1_MIN_SAMPLES: u64 = 5;
 
 /// Elysium address format: ely://<node_id>
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -99,12 +105,15 @@ impl MeshMessage {
     }
 }
 
-/// Router for mesh message routing
+/// Router for mesh message routing.
+/// Peer selection uses UCB1 (multi-armed bandit) once sufficient samples exist;
+/// falls back to a heuristic score during cold-start.
 pub struct Router {
     our_node_id: String,
     seen_messages: Arc<RwLock<HashMap<String, Instant>>>, // message_id -> timestamp
     message_cache: Arc<RwLock<HashMap<String, MeshMessage>>>, // Cache for deduplication
-    route_history: Arc<RwLock<HashMap<String, RouteStats>>>, // peer_id -> route statistics
+    route_history: Arc<RwLock<HashMap<String, RouteStats>>>, // peer_id -> heuristic stats
+    ucb_state: Arc<RwLock<UcbState>>,                        // UCB1 bandit state
 }
 
 /// Statistics for a route (peer)
@@ -117,6 +126,56 @@ pub struct RouteStats {
     last_updated: Instant,
 }
 
+/// Per-peer UCB1 state.
+#[derive(Debug, Clone, Default)]
+struct UcbPeerStats {
+    /// n_i: number of times this peer was selected for routing.
+    selections: u64,
+    /// μ_i: running average reward (incremental update).
+    avg_reward: f64,
+}
+
+/// Global UCB1 bandit state shared across all routing decisions.
+#[derive(Debug, Default)]
+struct UcbState {
+    /// N: total routing selections across all peers.
+    total_selections: u64,
+    peers: HashMap<String, UcbPeerStats>,
+}
+
+impl UcbState {
+    /// UCB1 score for peer_i: μ_i + sqrt(C * ln(N) / n_i).
+    /// Caller must ensure selections >= UCB1_MIN_SAMPLES before calling.
+    fn ucb1_score(&self, peer_id: &str) -> f64 {
+        match self.peers.get(peer_id) {
+            None => f64::INFINITY,
+            Some(s) if s.selections == 0 => f64::INFINITY,
+            Some(s) => {
+                let exploration = if self.total_selections > 0 {
+                    (UCB1_C * (self.total_selections as f64).ln() / s.selections as f64).sqrt()
+                } else {
+                    0.0
+                };
+                s.avg_reward + exploration
+            }
+        }
+    }
+
+    /// Record routing outcome for peer_i using incremental average update.
+    fn record_reward(&mut self, peer_id: &str, reward: f64) {
+        self.total_selections += 1;
+        let s = self.peers.entry(peer_id.to_string()).or_default();
+        s.selections += 1;
+        // Incremental mean: μ ← μ + (r - μ) / n
+        s.avg_reward += (reward - s.avg_reward) / s.selections as f64;
+    }
+
+    /// Return how many times peer has been selected (0 if unknown).
+    fn selections(&self, peer_id: &str) -> u64 {
+        self.peers.get(peer_id).map_or(0, |s| s.selections)
+    }
+}
+
 impl Router {
     /// Create a new router
     pub fn new(our_node_id: String) -> Self {
@@ -125,6 +184,7 @@ impl Router {
             seen_messages: Arc::new(RwLock::new(HashMap::new())),
             message_cache: Arc::new(RwLock::new(HashMap::new())),
             route_history: Arc::new(RwLock::new(HashMap::new())),
+            ucb_state: Arc::new(RwLock::new(UcbState::default())),
         }
     }
 
@@ -253,47 +313,59 @@ impl Router {
             .collect()
     }
 
-    /// Get best peers to forward to based on metrics (AI-routing)
-    /// Returns peers sorted by score (best first), limited to top N
+    /// Get best peers to forward to using UCB1 adaptive routing.
+    ///
+    /// Peer selection strategy:
+    /// - **Warm-up** (selections < UCB1_MIN_SAMPLES): heuristic score + exploration bonus.
+    ///   Unvisited peers receive the highest bonus, ensuring all peers are tried first.
+    /// - **Exploitation** (selections >= UCB1_MIN_SAMPLES): pure UCB1 score.
+    ///
+    /// Returns peers sorted by score (best first), limited to top `max_peers`.
     pub async fn get_best_forward_peers(
         &self,
         message: &MeshMessage,
         peer_infos: &[crate::p2p::peer::PeerInfo],
         max_peers: usize,
     ) -> Vec<String> {
-        // Get route history for adaptive learning
         let route_history = self.route_history.read().await;
+        let ucb = self.ucb_state.read().await;
 
-        // Filter and score peers
         let mut scored_peers: Vec<(String, f64)> = peer_infos
             .iter()
             .filter(|peer| {
-                // Don't forward to sender
-                peer.node_id != message.from &&
-                // Don't forward to nodes already in path (loop prevention)
-                !message.path.contains(&peer.node_id) &&
-                // Only consider connected peers
-                peer.is_connected()
+                peer.node_id != message.from
+                    && !message.path.contains(&peer.node_id)
+                    && peer.is_connected()
             })
             .map(|peer| {
-                let route_stats = route_history.get(&peer.node_id);
-                let score = Self::calculate_peer_score(&peer.metrics, route_stats);
+                let n_i = ucb.selections(&peer.node_id);
+                let score = if n_i < UCB1_MIN_SAMPLES {
+                    // Cold-start: heuristic score + exploration bonus.
+                    // Unvisited peers (n_i == 0) get +1.0 so they are always tried first.
+                    let heuristic = Self::calculate_peer_score(
+                        &peer.metrics,
+                        route_history.get(&peer.node_id),
+                    );
+                    let bonus = if n_i == 0 { 1.0 } else { 0.5 };
+                    heuristic + bonus
+                } else {
+                    ucb.ucb1_score(&peer.node_id)
+                };
                 (peer.node_id.clone(), score)
             })
             .collect();
 
-        // Sort by score (descending - best first)
         scored_peers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Return top N peer IDs
         scored_peers
             .into_iter()
             .take(max_peers)
-            .map(|(peer_id, _score)| peer_id)
+            .map(|(peer_id, _)| peer_id)
             .collect()
     }
 
-    /// Record successful route (for adaptive learning)
+    /// Record successful route (for adaptive learning).
+    /// Updates both the heuristic history and the UCB1 bandit state.
+    /// Reward is latency-weighted: r = clamp(1 - 2*latency_secs, 0.5, 1.0).
     pub async fn record_route_success(&self, peer_id: &str, latency: Duration) {
         let mut history = self.route_history.write().await;
         let stats = history
@@ -310,9 +382,15 @@ impl Router {
         stats.total_latency += latency;
         stats.sample_count += 1;
         stats.last_updated = Instant::now();
+        drop(history);
+
+        // UCB1: reward decreases with latency; clamped to [0.5, 1.0] for successful delivery.
+        let reward = (1.0 - 2.0 * latency.as_secs_f64()).clamp(0.5, 1.0);
+        self.ucb_state.write().await.record_reward(peer_id, reward);
     }
 
-    /// Record failed route (for adaptive learning)
+    /// Record failed route (for adaptive learning).
+    /// Updates both the heuristic history and the UCB1 bandit state (reward = 0).
     pub async fn record_route_failure(&self, peer_id: &str) {
         let mut history = self.route_history.write().await;
         let stats = history
@@ -327,6 +405,10 @@ impl Router {
 
         stats.failure_count += 1;
         stats.last_updated = Instant::now();
+        drop(history);
+
+        // UCB1: failure → reward = 0.
+        self.ucb_state.write().await.record_reward(peer_id, 0.0);
     }
 
     /// Cleanup old cache entries
@@ -346,6 +428,7 @@ impl Clone for Router {
             seen_messages: self.seen_messages.clone(),
             message_cache: self.message_cache.clone(),
             route_history: self.route_history.clone(),
+            ucb_state: self.ucb_state.clone(),
         }
     }
 }

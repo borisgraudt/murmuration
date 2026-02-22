@@ -151,6 +151,19 @@ impl StatsCollector {
         }
     }
 
+    /// Record a routing reward signal (0.0 = failure, 1.0 = perfect delivery).
+    /// Updates trust_score via EMA: trust ← α*reward + (1-α)*trust.
+    pub async fn record_reward(&self, peer_id: &str, reward: f32) {
+        let mut stats = self.stats.write().await;
+        let peer_stats = stats
+            .entry(peer_id.to_string())
+            .or_insert_with(|| PeerStats::new(peer_id.to_string()));
+        const ALPHA: f32 = 0.1;
+        peer_stats.trust_score =
+            (ALPHA * reward + (1.0 - ALPHA) * peer_stats.trust_score).clamp(0.0, 1.0);
+        peer_stats.last_seen = Instant::now();
+    }
+
     /// Remove stale stats
     pub async fn cleanup_stale(&self, timeout: Duration) {
         let mut stats = self.stats.write().await;
