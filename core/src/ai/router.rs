@@ -1,6 +1,9 @@
 /// Routing logic for mesh messages
 /// Implements UCB1 (Upper Confidence Bound) adaptive routing.
 /// Reference: Auer et al., "Finite-time Analysis of the Multiarmed Bandit Problem", 2002.
+///
+/// UCB1 state is persisted to sled under the key "ucb1_state" so that learned peer
+/// quality survives node restarts.
 use crate::error::{MeshError, Result};
 use crate::p2p::protocol::Message;
 use serde::{Deserialize, Serialize};
@@ -9,7 +12,7 @@ use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// UCB1 exploration constant (standard value = 2.0).
 const UCB1_C: f64 = 2.0;
@@ -105,15 +108,20 @@ impl MeshMessage {
     }
 }
 
+const UCB1_DB_KEY: &[u8] = b"ucb1_state_v1";
+
 /// Router for mesh message routing.
 /// Peer selection uses UCB1 (multi-armed bandit) once sufficient samples exist;
 /// falls back to a heuristic score during cold-start.
+/// UCB1 state is persisted to sled so learned topology survives restarts.
 pub struct Router {
     our_node_id: String,
     seen_messages: Arc<RwLock<HashMap<String, Instant>>>, // message_id -> timestamp
     message_cache: Arc<RwLock<HashMap<String, MeshMessage>>>, // Cache for deduplication
     route_history: Arc<RwLock<HashMap<String, RouteStats>>>, // peer_id -> heuristic stats
     ucb_state: Arc<RwLock<UcbState>>,                     // UCB1 bandit state
+    /// Optional sled tree for persisting UCB1 state across restarts.
+    db: Option<Arc<sled::Tree>>,
 }
 
 /// Statistics for a route (peer)
@@ -127,7 +135,7 @@ pub struct RouteStats {
 }
 
 /// Per-peer UCB1 state.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 struct UcbPeerStats {
     /// n_i: number of times this peer was selected for routing.
     selections: u64,
@@ -136,7 +144,8 @@ struct UcbPeerStats {
 }
 
 /// Global UCB1 bandit state shared across all routing decisions.
-#[derive(Debug, Default)]
+/// Serializable so it can be persisted to sled and survive restarts.
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct UcbState {
     /// N: total routing selections across all peers.
     total_selections: u64,
@@ -177,7 +186,7 @@ impl UcbState {
 }
 
 impl Router {
-    /// Create a new router
+    /// Create a new router (no persistence).
     pub fn new(our_node_id: String) -> Self {
         Self {
             our_node_id,
@@ -185,6 +194,42 @@ impl Router {
             message_cache: Arc::new(RwLock::new(HashMap::new())),
             route_history: Arc::new(RwLock::new(HashMap::new())),
             ucb_state: Arc::new(RwLock::new(UcbState::default())),
+            db: None,
+        }
+    }
+
+    /// Create a router backed by `sled_tree` for UCB1 state persistence.
+    /// Previously learned peer quality is loaded immediately.
+    pub fn with_db(our_node_id: String, sled_tree: sled::Tree) -> Self {
+        let db = Arc::new(sled_tree);
+        let initial_state = db
+            .get(UCB1_DB_KEY)
+            .ok()
+            .flatten()
+            .and_then(|bytes| serde_json::from_slice::<UcbState>(&bytes).ok())
+            .unwrap_or_default();
+        Self {
+            our_node_id,
+            seen_messages: Arc::new(RwLock::new(HashMap::new())),
+            message_cache: Arc::new(RwLock::new(HashMap::new())),
+            route_history: Arc::new(RwLock::new(HashMap::new())),
+            ucb_state: Arc::new(RwLock::new(initial_state)),
+            db: Some(db),
+        }
+    }
+
+    /// Persist the current UCB1 state to sled (best-effort; logs on failure).
+    async fn persist_ucb_state(&self) {
+        if let Some(db) = &self.db {
+            let state = self.ucb_state.read().await;
+            match serde_json::to_vec(&*state) {
+                Ok(bytes) => {
+                    if let Err(e) = db.insert(UCB1_DB_KEY, bytes) {
+                        warn!("Failed to persist UCB1 state: {}", e);
+                    }
+                }
+                Err(e) => warn!("Failed to serialize UCB1 state: {}", e),
+            }
         }
     }
 
@@ -385,6 +430,7 @@ impl Router {
         // UCB1: reward decreases with latency; clamped to [0.5, 1.0] for successful delivery.
         let reward = (1.0 - 2.0 * latency.as_secs_f64()).clamp(0.5, 1.0);
         self.ucb_state.write().await.record_reward(peer_id, reward);
+        self.persist_ucb_state().await;
     }
 
     /// Record failed route (for adaptive learning).
@@ -407,6 +453,7 @@ impl Router {
 
         // UCB1: failure → reward = 0.
         self.ucb_state.write().await.record_reward(peer_id, 0.0);
+        self.persist_ucb_state().await;
     }
 
     /// Cleanup old cache entries
@@ -427,6 +474,7 @@ impl Clone for Router {
             message_cache: self.message_cache.clone(),
             route_history: self.route_history.clone(),
             ucb_state: self.ucb_state.clone(),
+            db: self.db.clone(),
         }
     }
 }

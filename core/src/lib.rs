@@ -1,6 +1,8 @@
 pub mod ai;
 pub mod api;
 pub mod bundle;
+pub mod e2e;
+pub mod group;
 pub mod cli_app;
 pub mod config;
 pub mod contact_store;

@@ -185,7 +185,15 @@ impl Node {
         let event_emitter = EventEmitter::new(id.clone());
         let encryption_manager = ident.encryption;
         let session_keys = SessionKeyManager::new();
-        let router = Router::new(id.clone());
+        // Open a dedicated sled tree for UCB1 state so it persists across restarts
+        let ucb1_db = sled::open(data_dir.join("ucb1"))
+            .and_then(|db| db.open_tree("ucb1_routing"))
+            .ok();
+        let router = if let Some(tree) = ucb1_db {
+            Router::with_db(id.clone(), tree)
+        } else {
+            Router::new(id.clone())
+        };
         let routing_logger = RoutingLogger::new();
         let content_store = ContentStore::new(&data_dir)?;
         let name_registry = NameRegistry::with_storage(&data_dir)?;
@@ -1505,7 +1513,7 @@ impl Node {
             let decrypted_payload =
                 if let Some(session_key) = self.session_keys.get_session_key(&peer_id).await {
                     if payload.len() >= 12 {
-                        // Try to decrypt (nonce is first 12 bytes)
+                        // Nonce is first 12 bytes
                         let (nonce, encrypted_data) = payload.split_at(12);
                         match crate::p2p::encryption::EncryptionManager::decrypt_aes(
                             encrypted_data,
@@ -1513,11 +1521,20 @@ impl Node {
                             nonce,
                         ) {
                             Ok(decrypted) => {
-                                debug!("Decrypted message from {}", peer_id);
-                                decrypted
+                                // Unpad: strip padding added by pad_message()
+                                match crate::p2p::encryption::unpad_message(&decrypted) {
+                                    Some(real) => {
+                                        debug!("Decrypted+unpadded message from {}", peer_id);
+                                        real.to_vec()
+                                    }
+                                    None => {
+                                        // Legacy peer (no padding) or padding stripped already
+                                        debug!("Decrypted message from {} (no padding)", peer_id);
+                                        decrypted
+                                    }
+                                }
                             }
                             Err(e) => {
-                                // If decryption fails, try parsing as plain message
                                 debug!("Decryption failed for {}: {}, trying plain", peer_id, e);
                                 payload
                             }
@@ -1850,46 +1867,37 @@ impl Node {
 
         // Encrypt if we have a session key
         let frame = if let Some(session_key) = self.session_keys.get_session_key(peer_id).await {
-            // Generate new nonce for this message
+            // Pad to PADDING_BLOCK boundary for traffic-analysis resistance
+            let padded = crate::p2p::encryption::pad_message(&plain_payload);
+
+            // Generate fresh nonce per message (never reuse)
             use aes_gcm::aead::{AeadCore, OsRng};
             let nonce = aes_gcm::Aes256Gcm::generate_nonce(&mut OsRng);
-            #[allow(deprecated)] // GenericArray::as_slice is deprecated
+            #[allow(deprecated)]
             let nonce_bytes = nonce.as_slice().to_vec();
 
-            // Encrypt payload
             match crate::p2p::encryption::EncryptionManager::encrypt_aes(
-                &plain_payload,
+                &padded,
                 &session_key.key,
                 &nonce_bytes,
             ) {
                 Ok(encrypted_data) => Frame::from_encrypted(&nonce_bytes, &encrypted_data),
                 Err(e) => {
-                    warn!(
-                        "Failed to encrypt message to {}: {}, sending plain",
-                        peer_id, e
-                    );
-                    Frame::from_message(message).map_err(|e| {
-                        MeshError::Protocol(format!("Failed to create frame: {}", e))
-                    })?
+                    warn!("Failed to encrypt message to {}: {}, sending plain", peer_id, e);
+                    Frame::from_message(message)
+                        .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
                 }
             }
         } else {
-            // No session key, send plain
             Frame::from_message(message)
                 .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
         };
 
-        // Send frame
-        stream
-            .write_all(&frame.to_bytes())
-            .await
-            .map_err(MeshError::Io)?;
-
+        stream.write_all(&frame.to_bytes()).await.map_err(MeshError::Io)?;
         Ok(())
     }
 
     /// Send a message to a peer (encrypts if session key is available)
-    /// This is a convenience method that uses the message channel
     #[allow(dead_code)]
     async fn send_message(
         &self,
@@ -1899,48 +1907,34 @@ impl Node {
     ) -> Result<()> {
         use tokio::io::AsyncWriteExt;
 
-        // Serialize message
         let plain_payload = message
             .to_bytes()
             .map_err(|e| MeshError::Protocol(format!("Failed to serialize message: {}", e)))?;
 
-        // Encrypt if we have a session key
         let frame = if let Some(session_key) = self.session_keys.get_session_key(peer_id).await {
-            // Generate new nonce for this message
+            let padded = crate::p2p::encryption::pad_message(&plain_payload);
             use aes_gcm::aead::{AeadCore, OsRng};
             let nonce = aes_gcm::Aes256Gcm::generate_nonce(&mut OsRng);
-            #[allow(deprecated)] // GenericArray::as_slice is deprecated
+            #[allow(deprecated)]
             let nonce_bytes = nonce.as_slice().to_vec();
-
-            // Encrypt payload
             match crate::p2p::encryption::EncryptionManager::encrypt_aes(
-                &plain_payload,
+                &padded,
                 &session_key.key,
                 &nonce_bytes,
             ) {
                 Ok(encrypted_data) => Frame::from_encrypted(&nonce_bytes, &encrypted_data),
                 Err(e) => {
-                    warn!(
-                        "Failed to encrypt message to {}: {}, sending plain",
-                        peer_id, e
-                    );
-                    Frame::from_message(message).map_err(|e| {
-                        MeshError::Protocol(format!("Failed to create frame: {}", e))
-                    })?
+                    warn!("Failed to encrypt message to {}: {}, sending plain", peer_id, e);
+                    Frame::from_message(message)
+                        .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
                 }
             }
         } else {
-            // No session key, send plain
             Frame::from_message(message)
                 .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
         };
 
-        // Send frame
-        stream
-            .write_all(&frame.to_bytes())
-            .await
-            .map_err(MeshError::Io)?;
-
+        stream.write_all(&frame.to_bytes()).await.map_err(MeshError::Io)?;
         Ok(())
     }
 

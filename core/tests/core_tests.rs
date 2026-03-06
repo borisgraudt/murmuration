@@ -62,8 +62,8 @@ async fn test_handshake_outgoing_connection() {
     // Verify handshake results
     assert_eq!(peer_id, "node2");
     assert_eq!(peer_id2, "node1");
-    assert_eq!(protocol_version, 1);
-    assert_eq!(protocol_version2, 1);
+    assert_eq!(protocol_version, 2);
+    assert_eq!(protocol_version2, 2);
 }
 
 #[tokio::test]
@@ -117,8 +117,8 @@ async fn test_handshake_incoming_connection() {
     // Verify handshake results
     assert_eq!(peer_id, "node1");
     assert_eq!(peer_id2, "node2");
-    assert_eq!(protocol_version, 1);
-    assert_eq!(protocol_version2, 1);
+    assert_eq!(protocol_version, 2);
+    assert_eq!(protocol_version2, 2);
 }
 
 #[tokio::test]

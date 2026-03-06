@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
-// Tracing imports removed - using in node.rs instead
 
 /// Connection state of a peer
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,7 +288,11 @@ impl PeerManager {
         }
     }
 
-    /// Perform handshake with a peer
+    /// Perform handshake with a peer.
+    ///
+    /// Protocol v2: includes X25519 ephemeral public keys in both directions.
+    /// Session key = HKDF-SHA256(DH(our_ephemeral_priv, peer_ephemeral_pub), info="elysium-v2").
+    /// Falls back to RSA key-encapsulation (v1) if peer omits ephemeral_pubkey.
     pub async fn perform_handshake(
         &self,
         stream: &mut TcpStream,
@@ -308,11 +311,22 @@ impl PeerManager {
                 String::new()
             };
 
+            // Generate ephemeral X25519 keypair for forward secrecy
+            let our_ephemeral_secret = x25519_dalek::EphemeralSecret::random_from_rng(
+                rand::rngs::OsRng,
+            );
+            let our_ephemeral_public = x25519_dalek::PublicKey::from(&our_ephemeral_secret);
+            let ephemeral_pubkey_b64 = base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                our_ephemeral_public.as_bytes(),
+            );
+
             let handshake_message = Message::Handshake {
                 node_id: self.our_node_id.clone(),
                 protocol_version: PROTOCOL_VERSION,
                 listen_port: self.our_listen_port,
                 public_key: Some(our_public_key),
+                ephemeral_pubkey: Some(ephemeral_pubkey_b64),
             };
 
             let handshake_bytes = handshake_message
@@ -397,37 +411,62 @@ impl PeerManager {
                     public_key,
                     encrypted_session_key,
                     nonce,
+                    ephemeral_pubkey,
                 } => {
-                    // Parse peer's public key if provided
+                    // Parse peer's RSA public key if provided
                     let peer_pub_key = if let Some(pub_key_str) = &public_key {
                         Some(EncryptionManager::parse_public_key(pub_key_str)?)
                     } else {
                         None
                     };
 
-                    // Decrypt and store session key if provided
-                    if let (Some(enc_mgr), Some(sess_keys), Some(enc_key), Some(nonce_bytes)) = (
-                        encryption_manager,
-                        session_keys,
-                        encrypted_session_key,
-                        nonce,
-                    ) {
-                        // Decrypt session key with our private key
-                        match enc_mgr.decrypt_with_private_key(&enc_key).await {
-                            Ok(aes_key_bytes) => {
-                                // Convert Vec<u8> to Key<Aes256Gcm>
-                                #[allow(deprecated)] // GenericArray::from_slice is deprecated
-                                let aes_key =
-                                    aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(&aes_key_bytes);
-
-                                // Store session key
-                                sess_keys
-                                    .set_session_key(node_id.clone(), *aes_key, nonce_bytes)
-                                    .await;
+                    if let Some(sess_keys) = session_keys {
+                        if let Some(peer_eph_b64) = ephemeral_pubkey {
+                            // ── v2: X25519 DH forward-secret path ──────────────────
+                            match base64::Engine::decode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &peer_eph_b64,
+                            ) {
+                                Ok(peer_eph_bytes) if peer_eph_bytes.len() == 32 => {
+                                    let mut arr = [0u8; 32];
+                                    arr.copy_from_slice(&peer_eph_bytes);
+                                    let peer_eph_pub =
+                                        x25519_dalek::PublicKey::from(arr);
+                                    let shared =
+                                        our_ephemeral_secret.diffie_hellman(&peer_eph_pub);
+                                    let aes_key = EncryptionManager::derive_session_key_hkdf(
+                                        shared.as_bytes(),
+                                    );
+                                    sess_keys
+                                        .set_session_key(node_id.clone(), aes_key, vec![])
+                                        .await;
+                                    tracing::info!(
+                                        "Forward-secret session established with {} (X25519+HKDF)",
+                                        node_id
+                                    );
+                                }
+                                _ => tracing::warn!(
+                                    "Invalid ephemeral pubkey from {}, skipping encryption",
+                                    node_id
+                                ),
                             }
-                            Err(e) => {
-                                // Log error but continue without encryption
-                                tracing::warn!("Failed to decrypt session key: {}", e);
+                        } else if let (Some(enc_mgr), Some(enc_key), Some(nonce_bytes)) =
+                            (encryption_manager, encrypted_session_key, nonce)
+                        {
+                            // ── v1 fallback: RSA key encapsulation ─────────────────
+                            match enc_mgr.decrypt_with_private_key(&enc_key).await {
+                                Ok(aes_key_bytes) => {
+                                    #[allow(deprecated)]
+                                    let aes_key = aes_gcm::Key::<aes_gcm::Aes256Gcm>::from_slice(
+                                        &aes_key_bytes,
+                                    );
+                                    sess_keys
+                                        .set_session_key(node_id.clone(), *aes_key, nonce_bytes)
+                                        .await;
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to decrypt session key: {}", e);
+                                }
                             }
                         }
                     }
@@ -483,56 +522,91 @@ impl PeerManager {
                 MeshError::Peer(format!("Failed to parse handshake message: {}", e))
             })?;
 
-            let (peer_id, protocol_version, peer_public_key) = match message {
+            // Generate our ephemeral X25519 keypair before parsing (needed for v2 DH)
+            let our_eph_secret =
+                x25519_dalek::EphemeralSecret::random_from_rng(rand::rngs::OsRng);
+            let our_eph_public = x25519_dalek::PublicKey::from(&our_eph_secret);
+            let our_eph_b64 = base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                our_eph_public.as_bytes(),
+            );
+
+            let (peer_id, protocol_version, peer_public_key, peer_eph_pubkey) = match message {
                 Message::Handshake {
                     node_id,
                     protocol_version,
                     listen_port: _,
                     public_key,
+                    ephemeral_pubkey,
                 } => {
-                    // Parse peer's public key if provided
                     let peer_pub_key = if let Some(pub_key_str) = &public_key {
                         Some(EncryptionManager::parse_public_key(pub_key_str)?)
                     } else {
                         None
                     };
-
-                    (node_id, protocol_version, peer_pub_key)
+                    (node_id, protocol_version, peer_pub_key, ephemeral_pubkey)
                 }
                 _ => return Err(MeshError::Peer("Expected handshake message".to_string())),
             };
 
-            // Send handshake ack
+            // Build HandshakeAck — prefer X25519 DH (v2), fall back to RSA (v1)
             let our_public_key = if let Some(enc_mgr) = encryption_manager {
                 enc_mgr.get_public_key_string()?
             } else {
                 String::new()
             };
 
-            // Generate and encrypt session key if we have encryption manager
-            let (encrypted_session_key, nonce) =
-                if let (Some(enc_mgr), Some(sess_keys)) = (encryption_manager, session_keys) {
-                    if let Some(peer_pub_key) = &peer_public_key {
-                        // Generate AES session key
-                        let (aes_key, nonce_bytes) = EncryptionManager::generate_session_key();
-
-                        // Encrypt session key with peer's public key
-                        #[allow(deprecated)] // GenericArray::as_slice is deprecated
-                        let encrypted_key =
-                            enc_mgr.encrypt_with_public_key(aes_key.as_slice(), peer_pub_key)?;
-
-                        // Store session key
-                        sess_keys
-                            .set_session_key(peer_id.clone(), aes_key, nonce_bytes.clone())
-                            .await;
-
-                        (Some(encrypted_key), Some(nonce_bytes))
-                    } else {
-                        (None, None)
+            let (encrypted_session_key, nonce, ack_ephemeral) = if let Some(peer_eph_b64) =
+                &peer_eph_pubkey
+            {
+                // ── v2: X25519 DH ────────────────────────────────────────────────
+                match base64::Engine::decode(
+                    &base64::engine::general_purpose::STANDARD,
+                    peer_eph_b64,
+                ) {
+                    Ok(bytes) if bytes.len() == 32 => {
+                        let mut arr = [0u8; 32];
+                        arr.copy_from_slice(&bytes);
+                        let peer_eph_pub = x25519_dalek::PublicKey::from(arr);
+                        let shared = our_eph_secret.diffie_hellman(&peer_eph_pub);
+                        let aes_key =
+                            EncryptionManager::derive_session_key_hkdf(shared.as_bytes());
+                        if let Some(sess_keys) = session_keys {
+                            sess_keys
+                                .set_session_key(peer_id.clone(), aes_key, vec![])
+                                .await;
+                        }
+                        tracing::info!(
+                            "Forward-secret session established with {} (X25519+HKDF)",
+                            peer_id
+                        );
+                        (None, None, Some(our_eph_b64))
                     }
+                    _ => {
+                        tracing::warn!(
+                            "Bad ephemeral key from {}, falling back to RSA",
+                            peer_id
+                        );
+                        (None, None, None)
+                    }
+                }
+            } else if let (Some(enc_mgr), Some(sess_keys)) = (encryption_manager, session_keys) {
+                // ── v1 fallback: RSA key encapsulation ───────────────────────────
+                if let Some(peer_pub_key) = &peer_public_key {
+                    let (aes_key, nonce_bytes) = EncryptionManager::generate_session_key();
+                    #[allow(deprecated)]
+                    let encrypted_key =
+                        enc_mgr.encrypt_with_public_key(aes_key.as_slice(), peer_pub_key)?;
+                    sess_keys
+                        .set_session_key(peer_id.clone(), aes_key, nonce_bytes.clone())
+                        .await;
+                    (Some(encrypted_key), Some(nonce_bytes), None)
                 } else {
-                    (None, None)
-                };
+                    (None, None, None)
+                }
+            } else {
+                (None, None, None)
+            };
 
             let ack_message = Message::HandshakeAck {
                 node_id: self.our_node_id.clone(),
@@ -540,6 +614,7 @@ impl PeerManager {
                 public_key: Some(our_public_key),
                 encrypted_session_key,
                 nonce,
+                ephemeral_pubkey: ack_ephemeral,
             };
 
             let ack_bytes = ack_message.to_bytes().map_err(MeshError::Serialization)?;
@@ -557,12 +632,13 @@ impl PeerManager {
                 .await
                 .map_err(|e| MeshError::Peer(format!("Failed to flush handshake ack: {}", e)))?;
 
-            // Log handshake completion
             use crate::p2p::encryption_pqc::is_pqc_available;
             if is_pqc_available() {
-                tracing::info!("🔐 PQC handshake established with {} (Kyber768)", peer_id);
+                tracing::info!("Forward-secret PQC session established with {}", peer_id);
+            } else if peer_eph_pubkey.is_some() {
+                tracing::info!("Forward-secret session established with {} (X25519)", peer_id);
             } else {
-                tracing::info!("🔐 RSA handshake established with {}", peer_id);
+                tracing::info!("RSA session established with {} (v1 fallback)", peer_id);
             }
 
             Ok((peer_id, protocol_version, peer_public_key))

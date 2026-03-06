@@ -2,8 +2,8 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// Protocol version
-pub const PROTOCOL_VERSION: u8 = 1;
+/// Protocol version (v2 adds X25519 ephemeral forward secrecy)
+pub const PROTOCOL_VERSION: u8 = 2;
 
 /// Message types in the protocol
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -16,6 +16,11 @@ pub enum Message {
         protocol_version: u8,
         listen_port: u16,
         public_key: Option<String>, // RSA public key (base64 encoded)
+        /// X25519 ephemeral public key for forward-secret session key derivation (protocol v2+).
+        /// base64-encoded 32-byte X25519 public key. When present the session key is derived
+        /// via X25519 DH + HKDF-SHA256 and the RSA key-encapsulation path is skipped.
+        #[serde(default)]
+        ephemeral_pubkey: Option<String>,
     },
 
     /// Acknowledgment of handshake
@@ -24,8 +29,12 @@ pub enum Message {
         node_id: String,
         protocol_version: u8,
         public_key: Option<String>, // RSA public key (base64 encoded)
-        encrypted_session_key: Option<Vec<u8>>, // AES session key encrypted with our RSA public key
-        nonce: Option<Vec<u8>>,     // AES nonce
+        /// RSA-encapsulated AES key (legacy path, used only when ephemeral_pubkey is absent).
+        encrypted_session_key: Option<Vec<u8>>,
+        nonce: Option<Vec<u8>>, // AES nonce (legacy)
+        /// Responder's X25519 ephemeral public key (present in protocol v2+).
+        #[serde(default)]
+        ephemeral_pubkey: Option<String>,
     },
 
     /// Regular data message

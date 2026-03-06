@@ -1,5 +1,7 @@
 /// Encryption module for secure P2P communication
-/// Implements RSA for key exchange and AES-GCM for message encryption
+/// Implements RSA for key exchange and AES-GCM for message encryption.
+/// Protocol v2 adds X25519 ephemeral Diffie-Hellman for forward secrecy:
+///   session_key = HKDF-SHA256(ikm=DH_shared_secret, info=b"elysium-session-v2")[..32]
 use crate::error::{MeshError, Result};
 #[allow(deprecated)] // aes-gcm 0.10 uses deprecated GenericArray from generic-array 0.14
 use aes_gcm::{
@@ -7,10 +9,48 @@ use aes_gcm::{
     Aes256Gcm, Key,
 };
 use base64::{engine::general_purpose, Engine as _};
+use hkdf::Hkdf;
 use rsa::{Oaep, RsaPrivateKey, RsaPublicKey};
 use sha2::Sha256;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// Padding block size for traffic-analysis resistance (bytes).
+/// All plaintext payloads are padded to a multiple of this size before encryption,
+/// and unpadded after decryption. Prevents message-length side-channels.
+pub const PADDING_BLOCK: usize = 256;
+
+/// Pad `data` to the next multiple of [`PADDING_BLOCK`].
+/// Wire format: `[u16 BE real_len | data | random_padding]`
+pub fn pad_message(data: &[u8]) -> Vec<u8> {
+    let real_len = data.len();
+    let content_len = 2 + real_len; // 2-byte length prefix + data
+    let padded_len = content_len.div_ceil(PADDING_BLOCK) * PADDING_BLOCK;
+    let pad_bytes = padded_len - content_len;
+
+    let mut out = Vec::with_capacity(padded_len);
+    out.extend_from_slice(&(real_len as u16).to_be_bytes());
+    out.extend_from_slice(data);
+    // Random padding (indistinguishable from ciphertext after AES-GCM encryption)
+    let mut rng_bytes = vec![0u8; pad_bytes];
+    use rand::RngCore;
+    rand::rngs::OsRng.fill_bytes(&mut rng_bytes);
+    out.extend_from_slice(&rng_bytes);
+    out
+}
+
+/// Recover original data from a padded buffer produced by [`pad_message`].
+/// Returns `None` if the buffer is malformed.
+pub fn unpad_message(padded: &[u8]) -> Option<&[u8]> {
+    if padded.len() < 2 {
+        return None;
+    }
+    let real_len = u16::from_be_bytes([padded[0], padded[1]]) as usize;
+    if 2 + real_len > padded.len() {
+        return None;
+    }
+    Some(&padded[2..2 + real_len])
+}
 
 /// Encryption manager for a node
 pub struct EncryptionManager {
@@ -107,6 +147,16 @@ impl EncryptionManager {
         private_key
             .decrypt(padding, encrypted)
             .map_err(|e| MeshError::Peer(format!("RSA decryption failed: {}", e)))
+    }
+
+    /// Derive a 256-bit AES-GCM session key from a DH shared secret via HKDF-SHA256.
+    /// Used in the X25519 forward-secrecy handshake path (protocol v2).
+    pub fn derive_session_key_hkdf(dh_shared: &[u8]) -> Key<Aes256Gcm> {
+        let hk = Hkdf::<Sha256>::new(None, dh_shared);
+        let mut okm = [0u8; 32];
+        hk.expand(b"elysium-session-v2", &mut okm)
+            .expect("HKDF expand should not fail for 32-byte output");
+        Key::<Aes256Gcm>::from(okm)
     }
 
     /// Generate AES session key
