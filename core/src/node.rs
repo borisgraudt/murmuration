@@ -1883,9 +1883,13 @@ impl Node {
             ) {
                 Ok(encrypted_data) => Frame::from_encrypted(&nonce_bytes, &encrypted_data),
                 Err(e) => {
-                    warn!("Failed to encrypt message to {}: {}, sending plain", peer_id, e);
-                    Frame::from_message(message)
-                        .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
+                    warn!(
+                        "Failed to encrypt message to {}: {}, sending plain",
+                        peer_id, e
+                    );
+                    Frame::from_message(message).map_err(|e| {
+                        MeshError::Protocol(format!("Failed to create frame: {}", e))
+                    })?
                 }
             }
         } else {
@@ -1893,7 +1897,10 @@ impl Node {
                 .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
         };
 
-        stream.write_all(&frame.to_bytes()).await.map_err(MeshError::Io)?;
+        stream
+            .write_all(&frame.to_bytes())
+            .await
+            .map_err(MeshError::Io)?;
         Ok(())
     }
 
@@ -1924,9 +1931,13 @@ impl Node {
             ) {
                 Ok(encrypted_data) => Frame::from_encrypted(&nonce_bytes, &encrypted_data),
                 Err(e) => {
-                    warn!("Failed to encrypt message to {}: {}, sending plain", peer_id, e);
-                    Frame::from_message(message)
-                        .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
+                    warn!(
+                        "Failed to encrypt message to {}: {}, sending plain",
+                        peer_id, e
+                    );
+                    Frame::from_message(message).map_err(|e| {
+                        MeshError::Protocol(format!("Failed to create frame: {}", e))
+                    })?
                 }
             }
         } else {
@@ -1934,7 +1945,10 @@ impl Node {
                 .map_err(|e| MeshError::Protocol(format!("Failed to create frame: {}", e)))?
         };
 
-        stream.write_all(&frame.to_bytes()).await.map_err(MeshError::Io)?;
+        stream
+            .write_all(&frame.to_bytes())
+            .await
+            .map_err(MeshError::Io)?;
         Ok(())
     }
 

@@ -145,12 +145,7 @@ fn ucb1_score(peer: &UcbPeer, total_selections: u64) -> f64 {
     peer.avg_reward + exploration
 }
 
-fn ucb1_record_reward(
-    bandit: &mut BanditState,
-    node: usize,
-    neighbour: usize,
-    reward: f64,
-) {
+fn ucb1_record_reward(bandit: &mut BanditState, node: usize, neighbour: usize, reward: f64) {
     let state = bandit[node].entry(neighbour).or_default();
     state.selections += 1;
     state.avg_reward += (reward - state.avg_reward) / state.selections as f64;
@@ -190,11 +185,7 @@ struct SimResult {
 }
 
 /// Simulate N_MESSAGES deliveries and return aggregate metrics.
-fn simulate(
-    net: &Network,
-    strategy: Strategy,
-    rng: &mut StdRng,
-) -> SimResult {
+fn simulate(net: &Network, strategy: Strategy, rng: &mut StdRng) -> SimResult {
     let mut bandit: BanditState = vec![HashMap::new(); net.n];
 
     let mut delivered = 0usize;

@@ -11,6 +11,80 @@ const DEFAULT_MAX_CONNECTIONS: usize = 24;
 const DEFAULT_MAX_CONNECT_IN_FLIGHT: usize = 16;
 const DEFAULT_CONNECT_BACKOFF_MAX_MS: u64 = 120_000;
 
+// ---------------------------------------------------------------------------
+// Censorship-resistance sub-configs (Upgrades 1–3)
+// ---------------------------------------------------------------------------
+
+/// Traffic obfuscation configuration (Upgrade 1).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TransportConfig {
+    /// Obfuscation mode: `"none"` | `"tls"` | `"obfs4"`.
+    /// Default: `"tls"` — wrap all connections in TLS 1.3 + WebSocket upgrade.
+    pub obfs_mode: String,
+    /// SNI hostname presented in the TLS ClientHello.
+    /// Should resemble a common CDN host to blend in with ambient HTTPS traffic.
+    pub tls_sni: String,
+}
+
+impl Default for TransportConfig {
+    fn default() -> Self {
+        Self {
+            obfs_mode: "tls".to_string(),
+            tls_sni: "cdn.cloudflare.com".to_string(),
+        }
+    }
+}
+
+/// NAT traversal configuration (Upgrade 2).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NatConfig {
+    /// STUN servers used for external address discovery.
+    pub stun_servers: Vec<String>,
+    /// Whether this node is willing to act as a TURN relay for symmetric-NAT peers.
+    pub enable_relay: bool,
+    /// Known relay node addresses (auto-discovered from the DHT when empty).
+    pub relay_candidates: Vec<String>,
+}
+
+impl Default for NatConfig {
+    fn default() -> Self {
+        Self {
+            stun_servers: vec![
+                "stun.l.google.com:19302".to_string(),
+                "stun1.l.google.com:19302".to_string(),
+            ],
+            enable_relay: true,
+            relay_candidates: Vec::new(),
+        }
+    }
+}
+
+/// Onion routing configuration (Upgrade 3).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OnionConfig {
+    /// Enable onion routing for outbound messages. Default: `false` (opt-in).
+    pub enabled: bool,
+    /// Number of onion hops (minimum 3 for meaningful anonymity).
+    pub hops: usize,
+    /// How long (seconds) a circuit lives before being rebuilt.
+    pub circuit_lifetime_s: u64,
+    /// Automatically rebuild circuits that fail mid-transfer.
+    pub rebuild_on_failure: bool,
+}
+
+impl Default for OnionConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            hops: 3,
+            circuit_lifetime_s: 600,
+            rebuild_on_failure: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+
 /// Node configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -67,6 +141,18 @@ pub struct Config {
 
     /// Max backoff for repeated connect attempts (cap)
     pub connect_backoff_max: Duration,
+
+    /// Traffic obfuscation (TLS camouflage / obfs4).
+    #[serde(default)]
+    pub transport: TransportConfig,
+
+    /// NAT traversal (STUN + hole punching + relay fallback).
+    #[serde(default)]
+    pub nat: NatConfig,
+
+    /// Onion routing (opt-in anonymity layer).
+    #[serde(default)]
+    pub onion: OnionConfig,
 }
 
 impl Default for Config {
@@ -90,6 +176,9 @@ impl Default for Config {
             connect_cooldown: Duration::from_millis(DEFAULT_CONNECT_COOLDOWN_MS),
             max_connect_in_flight: DEFAULT_MAX_CONNECT_IN_FLIGHT,
             connect_backoff_max: Duration::from_millis(DEFAULT_CONNECT_BACKOFF_MAX_MS),
+            transport: TransportConfig::default(),
+            nat: NatConfig::default(),
+            onion: OnionConfig::default(),
         }
     }
 }
@@ -284,6 +373,9 @@ impl Config {
             connect_backoff_max: Duration::from_millis(
                 connect_backoff_max_ms.unwrap_or(DEFAULT_CONNECT_BACKOFF_MAX_MS),
             ),
+            transport: TransportConfig::default(),
+            nat: NatConfig::default(),
+            onion: OnionConfig::default(),
             ..Default::default()
         })
     }

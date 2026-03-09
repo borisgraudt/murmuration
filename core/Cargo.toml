@@ -61,6 +61,11 @@ http-body-util = "0.1"
 http = "1.0"
 urlencoding = "2.1"
 futures-util = { version = "0.3", default-features = false, features = ["async-await"] }
+# TLS camouflage transport (Upgrade 1)
+rustls = { version = "0.21", features = ["dangerous_configuration"] }
+tokio-rustls = "0.24"
+rcgen = "0.11"
+rustls-pemfile = "1"
 # Post-Quantum Cryptography - using pqcrypto-kyber 0.8.1 (more stable)
 pqcrypto-kyber = { version = "0.8", optional = true }
 pqcrypto-traits = { version = "0.3", optional = true }

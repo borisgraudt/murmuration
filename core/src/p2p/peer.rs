@@ -312,9 +312,8 @@ impl PeerManager {
             };
 
             // Generate ephemeral X25519 keypair for forward secrecy
-            let our_ephemeral_secret = x25519_dalek::EphemeralSecret::random_from_rng(
-                rand::rngs::OsRng,
-            );
+            let our_ephemeral_secret =
+                x25519_dalek::EphemeralSecret::random_from_rng(rand::rngs::OsRng);
             let our_ephemeral_public = x25519_dalek::PublicKey::from(&our_ephemeral_secret);
             let ephemeral_pubkey_b64 = base64::Engine::encode(
                 &base64::engine::general_purpose::STANDARD,
@@ -430,10 +429,8 @@ impl PeerManager {
                                 Ok(peer_eph_bytes) if peer_eph_bytes.len() == 32 => {
                                     let mut arr = [0u8; 32];
                                     arr.copy_from_slice(&peer_eph_bytes);
-                                    let peer_eph_pub =
-                                        x25519_dalek::PublicKey::from(arr);
-                                    let shared =
-                                        our_ephemeral_secret.diffie_hellman(&peer_eph_pub);
+                                    let peer_eph_pub = x25519_dalek::PublicKey::from(arr);
+                                    let shared = our_ephemeral_secret.diffie_hellman(&peer_eph_pub);
                                     let aes_key = EncryptionManager::derive_session_key_hkdf(
                                         shared.as_bytes(),
                                     );
@@ -523,8 +520,7 @@ impl PeerManager {
             })?;
 
             // Generate our ephemeral X25519 keypair before parsing (needed for v2 DH)
-            let our_eph_secret =
-                x25519_dalek::EphemeralSecret::random_from_rng(rand::rngs::OsRng);
+            let our_eph_secret = x25519_dalek::EphemeralSecret::random_from_rng(rand::rngs::OsRng);
             let our_eph_public = x25519_dalek::PublicKey::from(&our_eph_secret);
             let our_eph_b64 = base64::Engine::encode(
                 &base64::engine::general_purpose::STANDARD,
@@ -569,8 +565,7 @@ impl PeerManager {
                         arr.copy_from_slice(&bytes);
                         let peer_eph_pub = x25519_dalek::PublicKey::from(arr);
                         let shared = our_eph_secret.diffie_hellman(&peer_eph_pub);
-                        let aes_key =
-                            EncryptionManager::derive_session_key_hkdf(shared.as_bytes());
+                        let aes_key = EncryptionManager::derive_session_key_hkdf(shared.as_bytes());
                         if let Some(sess_keys) = session_keys {
                             sess_keys
                                 .set_session_key(peer_id.clone(), aes_key, vec![])
@@ -583,10 +578,7 @@ impl PeerManager {
                         (None, None, Some(our_eph_b64))
                     }
                     _ => {
-                        tracing::warn!(
-                            "Bad ephemeral key from {}, falling back to RSA",
-                            peer_id
-                        );
+                        tracing::warn!("Bad ephemeral key from {}, falling back to RSA", peer_id);
                         (None, None, None)
                     }
                 }
@@ -636,7 +628,10 @@ impl PeerManager {
             if is_pqc_available() {
                 tracing::info!("Forward-secret PQC session established with {}", peer_id);
             } else if peer_eph_pubkey.is_some() {
-                tracing::info!("Forward-secret session established with {} (X25519)", peer_id);
+                tracing::info!(
+                    "Forward-secret session established with {} (X25519)",
+                    peer_id
+                );
             } else {
                 tracing::info!("RSA session established with {} (v1 fallback)", peer_id);
             }

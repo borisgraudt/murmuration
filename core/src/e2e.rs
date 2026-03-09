@@ -67,7 +67,8 @@ pub async fn e2e_decrypt(data: &[u8], enc_mgr: &EncryptionManager) -> Result<Opt
         return Ok(None); // Not E2E encrypted
     }
 
-    let payload: E2ePayload = serde_json::from_slice(&data[1..]).map_err(MeshError::Serialization)?;
+    let payload: E2ePayload =
+        serde_json::from_slice(&data[1..]).map_err(MeshError::Serialization)?;
 
     // Decrypt AES key with our RSA private key
     let aes_key_bytes = enc_mgr
