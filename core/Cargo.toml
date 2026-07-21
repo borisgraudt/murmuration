@@ -30,6 +30,10 @@ path = "src/bin/ely.rs"
 name = "simulate"
 path = "src/bin/simulate.rs"
 
+[[bin]]
+name = "benchmark"
+path = "src/bin/benchmark.rs"
+
 [dependencies]
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

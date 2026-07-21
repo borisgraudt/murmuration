@@ -36,3 +36,8 @@ python_cli/.venv/
 .ely/
 core/.ely/
 
+
+# Benchmark artefacts: benchmark.csv is committed (small, canonical);
+# the learning curve is regenerable and grows to >100MB on high-traffic runs.
+results/learning_curve.csv
+results/learning_curve*.csv

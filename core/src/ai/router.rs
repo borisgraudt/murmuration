@@ -145,11 +145,62 @@ struct UcbPeerStats {
 
 /// Global UCB1 bandit state shared across all routing decisions.
 /// Serializable so it can be persisted to sled and survive restarts.
+///
+/// # Destination conditioning
+///
+/// `peers` is keyed by peer alone, which makes it a *destination-agnostic*
+/// estimate: it answers "is this neighbour generally reliable?", not "is this
+/// neighbour a good step toward D?". Those are different questions, and only the
+/// second one is routing. Benchmarking showed the agnostic form plateaus far
+/// below an oracle that conditions on the destination, so `by_dest` keeps a
+/// separate bandit per destination; see `get_best_forward_peers_toward`.
+///
+/// Both are retained: the agnostic estimate is still the right prior for peer
+/// health, and keeping it preserves the on-disk format written by earlier
+/// versions.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct UcbState {
     /// N: total routing selections across all peers.
     total_selections: u64,
     peers: HashMap<String, UcbPeerStats>,
+    /// destination node_id → bandit conditioned on that destination.
+    #[serde(default)]
+    by_dest: HashMap<String, DestBandit>,
+}
+
+/// A UCB1 bandit scoped to a single destination.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct DestBandit {
+    total_selections: u64,
+    peers: HashMap<String, UcbPeerStats>,
+}
+
+impl DestBandit {
+    fn ucb1_score(&self, peer_id: &str) -> f64 {
+        match self.peers.get(peer_id) {
+            None => f64::INFINITY,
+            Some(s) if s.selections == 0 => f64::INFINITY,
+            Some(s) => {
+                let exploration = if self.total_selections > 0 {
+                    (UCB1_C * (self.total_selections as f64).ln() / s.selections as f64).sqrt()
+                } else {
+                    0.0
+                };
+                s.avg_reward + exploration
+            }
+        }
+    }
+
+    fn record_reward(&mut self, peer_id: &str, reward: f64) {
+        self.total_selections += 1;
+        let s = self.peers.entry(peer_id.to_string()).or_default();
+        s.selections += 1;
+        s.avg_reward += (reward - s.avg_reward) / s.selections as f64;
+    }
+
+    fn selections(&self, peer_id: &str) -> u64 {
+        self.peers.get(peer_id).map_or(0, |s| s.selections)
+    }
 }
 
 impl UcbState {
@@ -404,6 +455,84 @@ impl Router {
             .take(max_peers)
             .map(|(peer_id, _)| peer_id)
             .collect()
+    }
+
+    /// Destination-conditioned peer selection.
+    ///
+    /// Identical to [`Self::get_best_forward_peers`] except that the bandit state
+    /// consulted is the one scoped to `dest`. A neighbour that is an excellent step
+    /// toward one destination is often a poor step toward another, so scoring peers
+    /// with a single destination-agnostic estimate discards the signal that actually
+    /// determines routing quality.
+    ///
+    /// Warm-up behaviour is unchanged: until a peer has `UCB1_MIN_SAMPLES`
+    /// observations *for this destination*, the heuristic score plus an exploration
+    /// bonus is used, so unvisited peers are still tried first.
+    pub async fn get_best_forward_peers_toward(
+        &self,
+        message: &MeshMessage,
+        peer_infos: &[crate::p2p::peer::PeerInfo],
+        max_peers: usize,
+        dest: &str,
+    ) -> Vec<String> {
+        let route_history = self.route_history.read().await;
+        let ucb = self.ucb_state.read().await;
+        let empty = DestBandit::default();
+        let bandit = ucb.by_dest.get(dest).unwrap_or(&empty);
+
+        let mut scored_peers: Vec<(String, f64)> = peer_infos
+            .iter()
+            .filter(|peer| {
+                peer.node_id != message.from
+                    && !message.path.contains(&peer.node_id)
+                    && peer.is_connected()
+            })
+            .map(|peer| {
+                let n_i = bandit.selections(&peer.node_id);
+                let score = if n_i < UCB1_MIN_SAMPLES {
+                    let heuristic =
+                        Self::calculate_peer_score(&peer.metrics, route_history.get(&peer.node_id));
+                    let bonus = if n_i == 0 { 1.0 } else { 0.5 };
+                    heuristic + bonus
+                } else {
+                    bandit.ucb1_score(&peer.node_id)
+                };
+                (peer.node_id.clone(), score)
+            })
+            .collect();
+
+        scored_peers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored_peers
+            .into_iter()
+            .take(max_peers)
+            .map(|(peer_id, _)| peer_id)
+            .collect()
+    }
+
+    /// Record a delivery outcome against the bandit scoped to `dest`.
+    ///
+    /// `success` carries the observed hop latency; `None` records a failure.
+    /// Reward matches the destination-agnostic path: `clamp(1 - 2*latency, 0.5, 1.0)`
+    /// on success, `0.0` on failure.
+    pub async fn record_route_outcome_toward(
+        &self,
+        dest: &str,
+        peer_id: &str,
+        success: Option<Duration>,
+    ) {
+        let reward = match success {
+            Some(latency) => (1.0 - 2.0 * latency.as_secs_f64()).clamp(0.5, 1.0),
+            None => 0.0,
+        };
+        {
+            let mut state = self.ucb_state.write().await;
+            state
+                .by_dest
+                .entry(dest.to_string())
+                .or_default()
+                .record_reward(peer_id, reward);
+        }
+        self.persist_ucb_state().await;
     }
 
     /// Record successful route (for adaptive learning).
