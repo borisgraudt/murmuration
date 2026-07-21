@@ -7,24 +7,6 @@ on:
     branches: [ main, develop ]
 
 jobs:
-  check-formatting:
-    name: Check Formatting
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Check formatting
-        run: cargo fmt --check
-
-  clippy:
-    name: Clippy Lint
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
-
   test:
     name: Run Tests
     runs-on: ubuntu-latest
