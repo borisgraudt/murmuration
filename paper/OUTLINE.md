@@ -56,7 +56,7 @@ the result is robust to hyperparameters.
   `q_record`) + `RoutingEstimate` protocol msg; unit-tested.  **Live multi-node
   validation is the one remaining experiment** (see `docs/Q_ROUTING.md`).
 
-## 6. Realistic Traffic and Mobility — [done] traffic, [todo] mobility
+## 6. Realistic Traffic and Mobility — [done] traffic, [done] mobility (static-graph); [todo] real CRAWDAD trace
 - Concentrated (Zipf) destinations flip the ranking (finding 6b, **Fig 2**):
   agnostic policies degrade as traffic concentrates, Q-routing improves — the
   curves cross because they depend on concentration with opposite sign.

@@ -128,6 +128,42 @@ impl ContactTrace {
         Self { n, duration, contacts }
     }
 
+    /// Earliest-arrival time at every node for a message created at `src` at
+    /// time `t0` (the *foremost journey*, Bui-Xuan et al., 2003). This is the
+    /// exact optimum any delay-tolerant routing could achieve, so it is the
+    /// oracle the trace-driven benchmark compares practical strategies against.
+    ///
+    /// `f64::INFINITY` means unreachable from `src` after `t0`. Contacts are
+    /// processed in start-time order; a contact `[s,e)` relays a message that
+    /// reached a holder by time `e`, arriving at the peer at `max(s, holder)`.
+    /// Store-carry-forward is implicit: a node holds the message until a useful
+    /// contact appears.
+    pub fn earliest_arrival(&self, src: usize, t0: f64) -> Vec<f64> {
+        let mut arrival = vec![f64::INFINITY; self.n];
+        arrival[src] = t0;
+        for c in &self.contacts {
+            if c.end < t0 {
+                continue;
+            }
+            // Snapshot both holders *before* relaxing, so a message cannot ride
+            // a→b then b→a within the same contact.
+            let (ra, rb) = (arrival[c.a], arrival[c.b]);
+            if ra <= c.end {
+                let arrive = c.start.max(ra);
+                if arrive <= c.end && arrive < arrival[c.b] {
+                    arrival[c.b] = arrive;
+                }
+            }
+            if rb <= c.end {
+                let arrive = c.start.max(rb);
+                if arrive <= c.end && arrive < arrival[c.a] {
+                    arrival[c.a] = arrive;
+                }
+            }
+        }
+        arrival
+    }
+
     /// Empirical mean inter-contact time across all active pairs — a summary
     /// statistic used to check a trace looks heavy-tailed rather than periodic.
     pub fn mean_inter_contact(&self) -> f64 {
@@ -197,6 +233,30 @@ mod tests {
             mean_gap > 30.0 * 5.0,
             "expected heavy tail to lift mean gap well above the floor, got {mean_gap}"
         );
+    }
+
+    #[test]
+    fn earliest_arrival_follows_temporal_path() {
+        // 0—1 during [0,10], 1—2 during [20,30], 1—2 during [5,8].
+        // From 0 at t=0: reach 1 at 0. Reach 2 only via the [20,30] contact
+        // (the [5,8] one is usable too: holder 1 ready at 0 ≤ 8 → arrive 5).
+        let csv = "0,10,0,1\n20,30,1,2\n5,8,1,2\n";
+        let tr = ContactTrace::load_csv(csv).unwrap();
+        let arr = tr.earliest_arrival(0, 0.0);
+        assert_eq!(arr[0], 0.0);
+        assert_eq!(arr[1], 0.0);
+        assert_eq!(arr[2], 5.0, "should take the earliest usable 1—2 contact");
+    }
+
+    #[test]
+    fn earliest_arrival_respects_time_order() {
+        // 1—2 happens BEFORE 0—1, so a message from 0 can never reach 2:
+        // by the time 0 reaches 1 (t=20), the 1—2 contact [5,8] is long gone.
+        let csv = "5,8,1,2\n20,30,0,1\n";
+        let tr = ContactTrace::load_csv(csv).unwrap();
+        let arr = tr.earliest_arrival(0, 0.0);
+        assert_eq!(arr[1], 20.0);
+        assert!(arr[2].is_infinite(), "no forward-time path 0→2 exists");
     }
 
     #[test]

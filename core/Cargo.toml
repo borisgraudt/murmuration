@@ -27,12 +27,12 @@ name = "ely"
 path = "src/bin/ely.rs"
 
 [[bin]]
-name = "simulate"
-path = "src/bin/simulate.rs"
-
-[[bin]]
 name = "benchmark"
 path = "src/bin/benchmark.rs"
+
+[[bin]]
+name = "trace_bench"
+path = "src/bin/trace_bench.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["full"] }

@@ -335,6 +335,46 @@ Flooding delivers 87–100% everywhere and is not a straw man: for small meshes 
 is simply correct, and any adaptive scheme must justify itself on *overhead*, not
 delivery. UCB1 spends ~4 transmissions per message against flooding's 624–1 750.
 
+### 8. The picture survives realistic mobility (contact traces)
+
+Every result above is on a *static* graph. The obvious objection is that real
+mesh networks are time-varying, so the static findings could be an artefact.
+`trace_bench` re-runs the study over **contact traces** with store-carry-forward
+semantics — a message advances only when its holders are physically in contact —
+using synthetic traces whose inter-contact gaps follow a truncated power law
+(Chaintreau et al., 2007; measured mean gap ≈1750 s against a 30 s floor, i.e.
+genuinely heavy-tailed). Real CRAWDAD/Infocom traces drop in through the same
+`ContactTrace::load_csv`. n=40, Zipf destinations s=1.2, 5 seeds.
+
+Delivery / mean delay / transmissions-per-message, at a 2 000 s deadline:
+
+| Strategy | delivery | delay (s) | tx/msg |
+|---|---|---|---|
+| **oracle** (foremost journey) | **87.0%** | 788 | 1.0 |
+| epidemic (flood) | 86.4% | 819 | 33.5 |
+| **prophet** (learned, dest-conditioned) | 57.0% | 988 | 6.8 |
+| direct (no relay) | 10.3% | 645 | 0.1 |
+
+The same shape as the static study, one regime down:
+
+* **A learned destination-conditioned policy sits well below the oracle.**
+  PRoPHET — the DTN analogue of the destination-conditioned routing this project
+  is about — reaches 57% against the oracle's 87% (≈66% of achievable), at 6.8
+  tx/msg. It is the practical middle, exactly where Q-routing sits in the static
+  study.
+* **Flooding matches the oracle on delivery but pays ~33× the overhead** (33.5 vs
+  1.0 tx/msg) — the static "flooding is not free" finding, reproduced.
+* The gap is monotone across deadlines (see `results/trace_bench.csv`,
+  `TRACE_DEADLINE` sweep 1000–5000 s): tighter deadlines widen the
+  learned-vs-oracle gap, looser ones close it, and epidemic tracks the oracle
+  throughout at order-of-magnitude cost.
+
+**Conclusion: the oracle gap and the overhead cost of blind replication are not
+artefacts of the static graph — they persist under heavy-tailed mobility.** The
+next step is to run a real CRAWDAD trace through the same harness and to port the
+Q-routing bootstrap into the DTN forwarder (currently PRoPHET's encounter
+heuristic stands in for it).
+
 ---
 
 ## Diagnosis
