@@ -82,7 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 - Complete PQC implementation (Kyber768)
-- Web interface (Elysium)
+- Web interface (Murmuration)
 - Mobile clients
 - Scalability improvements (1000+ nodes)
 - Performance optimizations

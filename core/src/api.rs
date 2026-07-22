@@ -123,9 +123,9 @@ pub async fn start_api_server_with_listener(node: Node, listener: TcpListener) -
 
     info!("API server listening on {}", api_addr);
 
-    // Save API port to ~/.elysium_api_port for easy CLI discovery
+    // Save API port to ~/.murmuration_api_port for easy CLI discovery
     if let Ok(home) = std::env::var("HOME") {
-        let port_file = std::path::Path::new(&home).join(".elysium_api_port");
+        let port_file = std::path::Path::new(&home).join(".murmuration_api_port");
         let _ = std::fs::write(&port_file, api_addr.port().to_string());
     }
 

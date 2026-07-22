@@ -1,4 +1,4 @@
-# Elysium Protocol v0.3
+# Murmuration Protocol v0.3
 
 **Status:** Draft
 **Date:** 2026-03-06
@@ -8,7 +8,7 @@
 
 ## Overview
 
-Elysium is a content-addressed, identity-based, delay-tolerant network protocol.
+Murmuration is a content-addressed, identity-based, delay-tolerant network protocol.
 
 **Design principles:**
 - Identity = cryptographic keys
@@ -37,14 +37,14 @@ node_id = base58(sha256(public_key))
 ## 2. Addressing
 
 ```
-ely://<node_id>/<path>
+mur://<node_id>/<path>
 ```
 
 **Examples:**
 ```
-ely://Qm7xRJ.../profile      - user profile
-ely://Qm7xRJ.../messages     - message inbox
-ely://Qm7xRJ.../site/index   - hosted content
+mur://Qm7xRJ.../profile      - user profile
+mur://Qm7xRJ.../messages     - message inbox
+mur://Qm7xRJ.../site/index   - hosted content
 ```
 
 **Verification:**
@@ -88,7 +88,7 @@ Responder → Initiator: HandshakeAck
 **Session key derivation (v2 path):**
 ```
 dh_shared   = X25519(initiator_ephemeral_secret, responder_ephemeral_public)
-session_key = HKDF-SHA256(ikm=dh_shared, salt=[], info="elysium-session-v2")[..32]
+session_key = HKDF-SHA256(ikm=dh_shared, salt=[], info="murmuration-session-v2")[..32]
 ```
 
 Both sides independently compute the same `session_key`; no ciphertext is
@@ -134,7 +134,7 @@ NameAnnounce    - name registration
 
 ### 4.1 UCB1 Adaptive Peer Selection
 
-Elysium selects forwarding peers using the **UCB1 multi-armed bandit** algorithm
+Murmuration selects forwarding peers using the **UCB1 multi-armed bandit** algorithm
 (Auer et al., 2002). Each connected peer is treated as an arm; the reward signal
 reflects delivery speed and success.
 
@@ -161,7 +161,7 @@ plus an exploration bonus of +1.0 for unvisited peers and +0.5 for partially
 sampled peers. This guarantees every peer is tried before UCB1 takes over.
 
 **Persistence:** UCB1 bandit state is serialised to a sled embedded database
-at `.ely/node-<port>/ucb1/` and loaded at startup, so learned routing
+at `.mur/node-<port>/ucb1/` and loaded at startup, so learned routing
 preferences survive process restarts.
 
 ### 4.2 Message Forwarding
@@ -240,7 +240,7 @@ deterministically from the group identity, requiring no central key server.
 **Key derivation:**
 
 ```
-key_material = SHA-256("elysium-group-v1:" || group_id || "|" || sorted_member_ids)
+key_material = SHA-256("murmuration-group-v1:" || group_id || "|" || sorted_member_ids)
 group_key    = Key<AES-256-GCM>(key_material)
 ```
 
@@ -280,7 +280,7 @@ NameRecord {
 
 **Resolution:**
 ```
-ely://alice → resolve → Qm7xRJ... → fetch content
+mur://alice → resolve → Qm7xRJ... → fetch content
 ```
 
 **Conflict resolution:** Most recent timestamp wins.
@@ -330,7 +330,7 @@ key encapsulation, ensuring backward compatibility.
 
 ## Implementation
 
-Reference: [github.com/borisgraudt/elysium](https://github.com/borisgraudt/elysium)
+Reference: [github.com/borisgraudt/murmuration](https://github.com/borisgraudt/murmuration)
 
 Language: Rust
 License: MIT

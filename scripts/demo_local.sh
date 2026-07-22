@@ -43,19 +43,19 @@ sleep 1
 # Check status via CLI
 echo ""
 echo "Node 1 status:"
-MESHLINK_API_PORT=17082 cargo run --bin cli -- status || true
+MURMURATION_API_PORT=17082 cargo run --bin cli -- status || true
 
 echo ""
 echo "Node 2 status:"
-MESHLINK_API_PORT=17083 cargo run --bin cli -- status || true
+MURMURATION_API_PORT=17083 cargo run --bin cli -- status || true
 
 echo ""
 echo "Node 3 status:"
-MESHLINK_API_PORT=17084 cargo run --bin cli -- status || true
+MURMURATION_API_PORT=17084 cargo run --bin cli -- status || true
 
 echo ""
 echo "📤 Sending broadcast message..."
-MESHLINK_API_PORT=17082 cargo run --bin cli -- broadcast "MeshNet AI+PQC demo message" || true
+MURMURATION_API_PORT=17082 cargo run --bin cli -- broadcast "MeshNet AI+PQC demo message" || true
 
 echo ""
 echo "⏳ Waiting 5 seconds for message propagation..."
@@ -65,15 +65,15 @@ echo ""
 echo "📋 Checking peers on each node..."
 echo ""
 echo "Node 1 peers:"
-MESHLINK_API_PORT=17082 cargo run --bin cli -- peers || true
+MURMURATION_API_PORT=17082 cargo run --bin cli -- peers || true
 
 echo ""
 echo "Node 2 peers:"
-MESHLINK_API_PORT=17083 cargo run --bin cli -- peers || true
+MURMURATION_API_PORT=17083 cargo run --bin cli -- peers || true
 
 echo ""
 echo "Node 3 peers:"
-MESHLINK_API_PORT=17084 cargo run --bin cli -- peers || true
+MURMURATION_API_PORT=17084 cargo run --bin cli -- peers || true
 
 echo ""
 echo "✅ Demo complete!"

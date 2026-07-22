@@ -291,7 +291,7 @@ impl PeerManager {
     /// Perform handshake with a peer.
     ///
     /// Protocol v2: includes X25519 ephemeral public keys in both directions.
-    /// Session key = HKDF-SHA256(DH(our_ephemeral_priv, peer_ephemeral_pub), info="elysium-v2").
+    /// Session key = HKDF-SHA256(DH(our_ephemeral_priv, peer_ephemeral_pub), info="murmuration-v2").
     /// Falls back to RSA key-encapsulation (v1) if peer omits ephemeral_pubkey.
     pub async fn perform_handshake(
         &self,
@@ -374,7 +374,7 @@ impl PeerManager {
                     return Err(MeshError::Peer(
                         "Connected to HTTP port (Web Gateway/API) instead of P2P port. \
                          Make sure you're connecting to the P2P port (e.g., 8080), not the API port (e.g., 17080) or Gateway port (e.g., 17081). \
-                         Usage: ely start <p2p_port> [peer_ip:p2p_port]"
+                         Usage: mur start <p2p_port> [peer_ip:p2p_port]"
                             .to_string(),
                     ));
                 }

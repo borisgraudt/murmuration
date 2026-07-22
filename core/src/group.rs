@@ -42,7 +42,7 @@ impl GroupInfo {
     /// Derive the group AES-256-GCM key deterministically from group_id + members.
     pub fn derive_key(&self) -> Key<Aes256Gcm> {
         let mut hasher = Sha256::new();
-        hasher.update(b"elysium-group-v1:");
+        hasher.update(b"murmuration-group-v1:");
         hasher.update(self.group_id.as_bytes());
         for member in &self.members {
             hasher.update(b"|");

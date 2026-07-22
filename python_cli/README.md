@@ -1,6 +1,6 @@
-# Elysium Python CLI & TUI
+# Murmuration Python CLI & TUI
 
-Beautiful command-line and terminal user interfaces for Elysium nodes, inspired by Claude Code.
+Beautiful command-line and terminal user interfaces for Murmuration nodes, inspired by Claude Code.
 
 ## Installation
 
@@ -113,7 +113,7 @@ The CLI features:
 The CLI automatically discovers API ports. You can also set it manually:
 
 ```bash
-export MESHLINK_API_PORT=17080
+export MURMURATION_API_PORT=17080
 python3 cli.py status
 ```
 

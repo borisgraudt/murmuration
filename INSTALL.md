@@ -1,4 +1,4 @@
-# Elysium Installation Guide
+# Murmuration Installation Guide
 
 ## Quick Install
 
@@ -6,14 +6,14 @@
 
 ```bash
 # Clone repo
-git clone https://github.com/borisgraudt/elysium.git
-cd elysium
+git clone https://github.com/borisgraudt/murmuration.git
+cd murmuration
 
-# Install ely to ~/.cargo/bin
+# Install mur to ~/.cargo/bin
 make install
 
 # Start using
-ely start 8080
+mur start 8080
 ```
 
 --- ## Installation Options
@@ -24,7 +24,7 @@ ely start 8080
 make install
 ```
 
-Installs `ely` to `~/.cargo/bin` (make sure it's in your `$PATH`).
+Installs `mur` to `~/.cargo/bin` (make sure it's in your `$PATH`).
 
 **Add to PATH if needed:**
 ```bash
@@ -35,65 +35,65 @@ source ~/.zshrc
 --- ### 2. Cargo Install from Source
 
 ```bash
-cd elysium/core
-cargo install --path . --bin ely
+cd murmuration/core
+cargo install --path . --bin mur
 ```
 
 --- ### 3. Cargo Install from GitHub
 
 ```bash
-cargo install --git https://github.com/borisgraudt/elysium.git --package meshlink_core --bin ely
+cargo install --git https://github.com/borisgraudt/murmuration.git --package murmuration --bin mur
 ```
 
 --- ### 4. Manual Build + Symlink
 
 ```bash
-cd elysium/core
+cd murmuration/core
 cargo build --release
 
 # Symlink to /usr/local/bin (requires sudo)
-sudo ln -s $(pwd)/target/release/ely /usr/local/bin/ely
+sudo ln -s $(pwd)/target/release/mur /usr/local/bin/mur
 
 # Or without sudo (user bin directory)
 mkdir -p ~/bin
-ln -s $(pwd)/target/release/ely ~/bin/ely
+ln -s $(pwd)/target/release/mur ~/bin/mur
 export PATH="$HOME/bin:$PATH"  # Add to ~/.zshrc or ~/.bashrc
 ```
 
 --- ### 5. Docker
 
 ```bash
-docker pull ghcr.io/borisgraudt/elysium:main
+docker pull ghcr.io/borisgraudt/murmuration:main
 
 # Run a node
 docker run --rm -it \
   -p 8080:8080 \
   -p 9998:9998/udp \
-  ghcr.io/borisgraudt/elysium:main start 8080
+  ghcr.io/borisgraudt/murmuration:main start 8080
 ```
 
 --- ## Verify Installation
 
 ```bash
 # Check version/help
-ely --help
+mur --help
 
 # Start a test node
-ely start 8080
+mur start 8080
 ```
 
 In another terminal:
 ```bash
 # CLI auto-discovers the API port!
-ely status
-ely peers
-ely broadcast "Hello Elysium!"
-ely inbox
+mur status
+mur peers
+mur broadcast "Hello Murmuration!"
+mur inbox
 ```
 
 --- ## Troubleshooting
 
-### `ely: command not found`
+### `mur: command not found`
 
 **Solution:** Add `~/.cargo/bin` to `$PATH`:
 
@@ -102,19 +102,19 @@ echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
---- ### `MESHLINK_API_PORT` still required?
+--- ### `MURMURATION_API_PORT` still required?
 
 **Not anymore!** CLI auto-discovers running nodes.
 
 **How it works:**
-1. Checks `MESHLINK_API_PORT` env var (if set)
-2. Reads `~/.elysium_api_port` (last node saves port here)
+1. Checks `MURMURATION_API_PORT` env var (if set)
+2. Reads `~/.murmuration_api_port` (last node saves port here)
 3. Tries default `17080` (8080 + 9000)
 4. Scans 17080-17089
 
 **Override if needed:**
 ```bash
-MESHLINK_API_PORT=17081 ely status
+MURMURATION_API_PORT=17081 mur status
 ```
 
 --- ### Port already in use
@@ -124,7 +124,7 @@ MESHLINK_API_PORT=17081 ely status
 lsof -i :8080
 
 # Kill old nodes
-killall ely core
+killall mur core
 ```
 
 --- ### Build fails
@@ -146,5 +146,5 @@ rustup update
 - **[Quickstart](docs/QUICKSTART.md)** — Getting started guide
 - **[README](README.md)** — Project overview
 
-**Ready to build on Elysium?** The platform is stable. Start now!
+**Ready to build on Murmuration?** The platform is stable. Start now!
 

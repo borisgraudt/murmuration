@@ -1,12 +1,12 @@
-/// Criterion benchmarks for the Elysium routing subsystem.
+/// Criterion benchmarks for the Murmuration routing subsystem.
 ///
 /// Run with:
 ///   cargo bench --bench routing
 ///
 /// Results are saved to target/criterion/routing/
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use meshlink_core::ai::router::{MeshMessage, Router};
-use meshlink_core::p2p::peer::{ConnectionState, PeerInfo};
+use murmuration::ai::router::{MeshMessage, Router};
+use murmuration::p2p::peer::{ConnectionState, PeerInfo};
 use std::time::Duration;
 use tokio::runtime::Runtime;
 

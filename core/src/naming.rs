@@ -1,4 +1,4 @@
-/// Simple naming system: ely://name → node_id resolution
+/// Simple naming system: mur://name → node_id resolution
 /// Frugal chic: local cache only, no gossip yet
 use crate::error::{MeshError, Result};
 use serde::{Deserialize, Serialize};

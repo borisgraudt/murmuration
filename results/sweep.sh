@@ -2,7 +2,7 @@
 # Hyperparameter robustness sweep.
 #
 # Answers the reviewer's two obvious objections:
-#   1. "You handicapped UCB1 with a bad exploration constant."   → sweep ELYSIUM_UCB1_C
+#   1. "You handicapped UCB1 with a bad exploration constant."   → sweep MURMURATION_UCB1_C
 #   2. "Q-routing only wins at one lucky (alpha, epsilon)."       → sweep BENCH_QALPHA / BENCH_QEPS
 #
 # Both sweeps run the same fixed condition and print delivery% (mean over seeds)
@@ -30,11 +30,11 @@ tmp=$(mktemp)
 echo "── UCB1 exploration constant (Q at defaults) ──"
 printf "%-8s %8s %10s %10s %8s\n" "C" "ucb1" "q_routing" "ceiling" "oracle"
 for C in 0.25 0.5 1.0 2.0 4.0 8.0; do
-  env "${COMMON[@]}" ELYSIUM_UCB1_C=$C BENCH_TAG=sweep "${BIN[@]}" > "$tmp" 2>/dev/null
+  env "${COMMON[@]}" MURMURATION_UCB1_C=$C BENCH_TAG=sweep "${BIN[@]}" > "$tmp" 2>/dev/null
   u=$(field "$tmp" ucb1); q=$(field "$tmp" q_routing)
   a=$(field "$tmp" agnostic_limit); o=$(field "$tmp" oracle)
   printf "%-8s %8s %10s %10s %8s\n" "$C" "$u" "$q" "$a" "$o"
-  echo "ucb1_c,ELYSIUM_UCB1_C,$C,$u,$q,$a,$o" >> "$OUT"
+  echo "ucb1_c,MURMURATION_UCB1_C,$C,$u,$q,$a,$o" >> "$OUT"
 done
 
 echo

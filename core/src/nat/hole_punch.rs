@@ -14,10 +14,10 @@ use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::time::timeout;
 
-/// Magic bytes that identify an Elysium hole-punch probe.
-const PROBE_MAGIC: &[u8] = b"ELY_PUNCH\x00";
+/// Magic bytes that identify an Murmuration hole-punch probe.
+const PROBE_MAGIC: &[u8] = b"MUR_PUNCH\x00";
 /// Magic bytes for the acknowledgement.
-const PROBE_ACK: &[u8] = b"ELY_PUNCH_ACK\x00";
+const PROBE_ACK: &[u8] = b"MUR_PUNCH_ACK\x00";
 
 /// Configuration for a hole-punch attempt.
 pub struct HolePunchConfig {

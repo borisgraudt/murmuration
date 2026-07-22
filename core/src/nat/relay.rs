@@ -1,6 +1,6 @@
 //! TURN-like relay for symmetric NAT fallback.
 //!
-//! Any Elysium node can opt in as a relay (`ely start --relay`).
+//! Any Murmuration node can opt in as a relay (`mur start --relay`).
 //! Relay nodes are announced in the DHT with a `relay=true` flag so
 //! peers that fail hole punching can discover and use them.
 //!

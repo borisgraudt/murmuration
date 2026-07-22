@@ -1,11 +1,11 @@
 [package]
-name = "meshlink_core"
+name = "murmuration"
 version = "0.1.0"
 edition = "2021"
 default-run = "core"
 
 [lib]
-name = "meshlink_core"
+name = "murmuration"
 path = "src/lib.rs"
 doctest = false
 
@@ -23,8 +23,8 @@ name = "cli"
 path = "src/bin/cli.rs"
 
 [[bin]]
-name = "ely"
-path = "src/bin/ely.rs"
+name = "mur"
+path = "src/bin/mur.rs"
 
 [[bin]]
 name = "benchmark"

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Elysium TUI - Advanced Terminal Interface
+Murmuration TUI - Advanced Terminal Interface
 Inspired by Claude Code's elegant design
 """
 import sys
@@ -147,7 +147,7 @@ class StatusPanel(Static):
     uptime: reactive[str] = reactive("0s")
 
     def render(self) -> str:
-        status = f"""[bold #f0883e]⚡ Elysium Node Status[/bold #f0883e]
+        status = f"""[bold #f0883e]⚡ Murmuration Node Status[/bold #f0883e]
 
 [dim]Node ID:[/dim] [#f0883e]{self.node_id[:16]}...[/#f0883e]
 [dim]Connected:[/dim] [#3fb950]{self.connected_peers}[/#3fb950][dim]/{self.total_peers}[/dim] peers
@@ -221,8 +221,8 @@ class CommandInput(Input):
             self.value = ""
 
 
-class ElysiumTUI(App):
-    """Advanced TUI for Elysium mesh network - Claude Code inspired"""
+class MurmurationTUI(App):
+    """Advanced TUI for Murmuration mesh network - Claude Code inspired"""
 
     CSS = CLAUDE_THEME
 
@@ -241,7 +241,7 @@ class ElysiumTUI(App):
 
     def compose(self) -> ComposeResult:
         """Create the UI layout"""
-        yield Header(name="⚡ Elysium - Decentralized Mesh Network")
+        yield Header(name="⚡ Murmuration - Decentralized Mesh Network")
 
         with Horizontal():
             # Left column: Status and Peers
@@ -270,14 +270,14 @@ class ElysiumTUI(App):
 
         # Try to connect to node
         messages.write("[#f0883e]═[/#f0883e]" * 50)
-        messages.write("[bold #f0883e]⚡ Elysium TUI - Advanced Interface[/bold #f0883e]")
+        messages.write("[bold #f0883e]⚡ Murmuration TUI - Advanced Interface[/bold #f0883e]")
         messages.write("[dim]Inspired by Claude Code[/dim]")
         messages.write("[#f0883e]═[/#f0883e]" * 50)
         messages.write("")
 
         try:
             self.client = MeshLinkClient()
-            messages.write("[#3fb950]✓[/#3fb950] Connected to Elysium node")
+            messages.write("[#3fb950]✓[/#3fb950] Connected to Murmuration node")
             messages.write(f"[dim]API Port: {self.client.api_port}[/dim]")
             messages.write("")
             messages.write("[dim]Type [#f0883e]help[/#f0883e] for available commands[/dim]")
@@ -296,7 +296,7 @@ class ElysiumTUI(App):
 
         except Exception as e:
             messages.write(f"[#f85149]✗[/#f85149] Failed to connect: {e}")
-            messages.write("[dim]Make sure a node is running: [#f0883e]ely start 8080[/#f0883e][/dim]")
+            messages.write("[dim]Make sure a node is running: [#f0883e]mur start 8080[/#f0883e][/dim]")
 
         # Focus command input
         self.query_one("#command_input", CommandInput).focus()
@@ -541,7 +541,7 @@ class ElysiumTUI(App):
 
 def main():
     """Entry point"""
-    app = ElysiumTUI()
+    app = MurmurationTUI()
     try:
         app.run()
     except KeyboardInterrupt:

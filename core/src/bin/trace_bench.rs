@@ -24,7 +24,7 @@
 //! Reports delivery ratio, mean delay over delivered messages, and transmissions
 //! per message (overhead). Run: `cargo run --release --bin trace_bench`.
 
-use meshlink_core::trace::ContactTrace;
+use murmuration::trace::ContactTrace;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::HashMap;

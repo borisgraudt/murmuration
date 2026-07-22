@@ -1,5 +1,5 @@
 """
-Elysium Web Backend - FastAPI server for web interface
+Murmuration Web Backend - FastAPI server for web interface
 Provides API for sites, chat, peer statistics, and integration with Rust core
 """
 from fastapi import FastAPI, HTTPException
@@ -11,10 +11,10 @@ import json
 import socket
 import os
 
-app = FastAPI(title="Elysium Web Backend")
+app = FastAPI(title="Murmuration Web Backend")
 
 # Configuration
-RUST_API_PORT = int(os.getenv("MESHLINK_API_PORT", "17080"))
+RUST_API_PORT = int(os.getenv("MURMURATION_API_PORT", "17080"))
 SITES_DIR = os.path.join(os.path.dirname(__file__), "../../sites")
 
 class MessageRequest(BaseModel):
@@ -57,7 +57,7 @@ def call_rust_api(command: str, args: Dict = None) -> Dict:
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "Elysium Web Backend", "version": "0.1.0"}
+    return {"message": "Murmuration Web Backend", "version": "0.1.0"}
 
 @app.get("/api/peers")
 async def get_peers():

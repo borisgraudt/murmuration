@@ -64,7 +64,7 @@ pub enum Message {
     #[serde(rename = "close")]
     Close { reason: String },
 
-    /// Elysium mesh message for routing
+    /// Murmuration mesh message for routing
     #[serde(rename = "mesh_message")]
     MeshMessage {
         from: String,
@@ -79,7 +79,7 @@ pub enum Message {
     #[serde(rename = "content_request")]
     ContentRequest {
         request_id: String, // Unique ID for matching request/response
-        url: String,        // ely://<node_id>/<path>
+        url: String,        // mur://<node_id>/<path>
         from_node: String,  // Requester node ID
         ttl: u8,            // Hops remaining
         path: Vec<String>,  // Route path for loop detection

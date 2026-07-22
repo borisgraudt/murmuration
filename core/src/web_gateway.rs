@@ -1,4 +1,4 @@
-/// Web Gateway - HTTP server for viewing ely:// content in browser
+/// Web Gateway - HTTP server for viewing mur:// content in browser
 use crate::error::Result;
 use crate::node::Node;
 use base64::{engine::general_purpose, Engine as _};
@@ -14,7 +14,7 @@ use tokio::net::TcpListener;
 use tracing::{error, info};
 
 pub async fn start_web_gateway(node: Arc<Node>, port: u16) -> Result<()> {
-    // Bind to both localhost and ely.local (if configured in /etc/hosts)
+    // Bind to both localhost and mur.local (if configured in /etc/hosts)
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse().map_err(|e| {
         crate::error::MeshError::Io(std::io::Error::new(
             std::io::ErrorKind::AddrNotAvailable,
@@ -28,7 +28,7 @@ pub async fn start_web_gateway(node: Arc<Node>, port: u16) -> Result<()> {
 
     info!("Web Gateway started on http://{}", addr);
     info!(
-        "  Also available at: http://ely.local:{} (if configured in /etc/hosts)",
+        "  Also available at: http://mur.local:{} (if configured in /etc/hosts)",
         port
     );
 
@@ -59,18 +59,18 @@ async fn handle_request(
 ) -> std::result::Result<Response<Full<bytes::Bytes>>, hyper::Error> {
     let path = req.uri().path();
 
-    // Support /ely/<node_id>/<path> format (clean, readable URLs)
-    if path.starts_with("/ely/") {
-        let ely_path = path.strip_prefix("/ely/").unwrap_or("");
+    // Support /mur/<node_id>/<path> format (clean, readable URLs)
+    if path.starts_with("/mur/") {
+        let ely_path = path.strip_prefix("/mur/").unwrap_or("");
         // Parse: <node_id>/<path>
         if let Some(slash_pos) = ely_path.find('/') {
             let node_id = &ely_path[..slash_pos];
             let content_path = &ely_path[slash_pos + 1..];
-            let url = format!("ely://{}/{}", node_id, content_path);
+            let url = format!("mur://{}/{}", node_id, content_path);
             return handle_content_request(&url, node).await;
         } else {
             // Just node_id, no path - treat as root
-            let url = format!("ely://{}/", ely_path);
+            let url = format!("mur://{}/", ely_path);
             return handle_content_request(&url, node).await;
         }
     }
@@ -83,14 +83,14 @@ async fn handle_request(
             .decode(encoded)
             .ok()
             .and_then(|b| String::from_utf8(b).ok())
-            .unwrap_or_else(|| format!("ely://{}", encoded.replace("%2F", "/")));
+            .unwrap_or_else(|| format!("mur://{}", encoded.replace("%2F", "/")));
 
         return handle_content_request(&url, node).await;
     }
 
     match (req.method(), path) {
         (&Method::GET, "/view") => {
-            // Legacy format: ?url=ely://...
+            // Legacy format: ?url=mur://...
             let query = req.uri().query().unwrap_or("");
             let url = extract_url_from_query(query);
 
@@ -117,7 +117,7 @@ async fn handle_request(
             let html = r#"<!DOCTYPE html>
 <html>
 <head>
-    <title>Elysium Web Gateway</title>
+    <title>Murmuration Web Gateway</title>
     <style>
         body { font-family: system-ui, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
         h1 { color: #2563eb; }
@@ -127,17 +127,17 @@ async fn handle_request(
     </style>
 </head>
 <body>
-    <h1>🌐 Elysium Web Gateway</h1>
-    <p>View <code>ely://</code> content in your browser.</p>
+    <h1>🌐 Murmuration Web Gateway</h1>
+    <p>View <code>mur://</code> content in your browser.</p>
     <h2>Usage</h2>
-    <p>Open ely:// URLs using clean format:</p>
-    <p><code><a href="/ely/node_id/path">/ely/&lt;node_id&gt;/&lt;path&gt;</a></code></p>
+    <p>Open mur:// URLs using clean format:</p>
+    <p><code><a href="/mur/node_id/path">/mur/&lt;node_id&gt;/&lt;path&gt;</a></code></p>
     <p>Or legacy formats:</p>
-    <p><code><a href="/view?url=ely://node_id/path">/view?url=ely://node_id/path</a></code></p>
+    <p><code><a href="/view?url=mur://node_id/path">/view?url=mur://node_id/path</a></code></p>
     <p><code>/e/&lt;base64_encoded_url&gt;</code></p>
     <h2>Example</h2>
-    <p>If you published content at <code>ely://Qm7xRJ.../site/index.html</code>, visit:</p>
-    <p><code><a href="/ely/Qm7xRJ.../site/index.html">/ely/Qm7xRJ.../site/index.html</a></code></p>
+    <p>If you published content at <code>mur://Qm7xRJ.../site/index.html</code>, visit:</p>
+    <p><code><a href="/mur/Qm7xRJ.../site/index.html">/mur/Qm7xRJ.../site/index.html</a></code></p>
     <hr>
     <p><small>Gateway is running. Your node must be online to fetch content from the mesh network.</small></p>
 </body>
@@ -208,7 +208,7 @@ async fn handle_content_request(
             match Response::builder()
                 .status(StatusCode::OK)
                 .header("Content-Type", content_type)
-                .header("X-Elysium-URL", url) // Custom header with original URL
+                .header("X-Murmuration-URL", url) // Custom header with original URL
                 .body(Full::new(bytes::Bytes::from(body_bytes)))
             {
                 Ok(resp) => Ok(resp),
@@ -282,13 +282,13 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
     // Update document title immediately
     document.title = elyUrl;
     
-    // Add visual indicator showing original ely:// URL
-    function addElyIndicator() {{
+    // Add visual indicator showing original mur:// URL
+    function addMurIndicator() {{
         // Check if indicator already exists
-        if (document.getElementById('elysium-url-indicator')) return;
+        if (document.getElementById('murmuration-url-indicator')) return;
         
         const indicator = document.createElement('div');
-        indicator.id = 'elysium-url-indicator';
+        indicator.id = 'murmuration-url-indicator';
         indicator.style.cssText = `
             position: fixed;
             top: 0;
@@ -306,7 +306,7 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
             gap: 8px;
         `;
         indicator.innerHTML = `
-            <span style="font-weight: bold;">🌐 Elysium:</span>
+            <span style="font-weight: bold;">🌐 Murmuration:</span>
             <code style="background: rgba(255,255,255,0.2); padding: 2px 6px; border-radius: 3px; font-size: 11px;">${{elyUrl}}</code>
             <button onclick="this.parentElement.style.display='none'" style="margin-left: auto; background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 11px;">✕</button>
         `;
@@ -319,31 +319,31 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
     
     // Rewrite URL in address bar using History API
     try {{
-        // Replace current history entry with ely:// URL
-        const newState = {{ ely: elyUrl }};
+        // Replace current history entry with mur:// URL
+        const newState = {{ mur: elyUrl }};
         history.replaceState(newState, elyUrl, gatewayUrl);
         
-        // Override browser back/forward to maintain ely:// URL
+        // Override browser back/forward to maintain mur:// URL
         window.addEventListener('popstate', function(e) {{
-            if (e.state && e.state.ely) {{
+            if (e.state && e.state.mur) {{
                 history.replaceState(e.state, document.title, gatewayUrl);
             }}
         }});
         
         // Add visual indicator when DOM is ready
         if (document.readyState === 'loading') {{
-            document.addEventListener('DOMContentLoaded', addElyIndicator);
+            document.addEventListener('DOMContentLoaded', addMurIndicator);
         }} else {{
-            addElyIndicator();
+            addMurIndicator();
         }}
     }} catch (e) {{
         console.warn('Could not rewrite URL:', e);
     }}
     
-    // Rewrite all ely:// links to use gateway
+    // Rewrite all mur:// links to use gateway
     document.addEventListener('DOMContentLoaded', function() {{
         // Rewrite existing links
-        const links = document.querySelectorAll('a[href^="ely://"]');
+        const links = document.querySelectorAll('a[href^="mur://"]');
         links.forEach(function(link) {{
             const href = link.getAttribute('href');
             if (href) {{
@@ -352,14 +352,14 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
             }}
         }});
         
-        // Intercept clicks on ely:// links
+        // Intercept clicks on mur:// links
         document.addEventListener('click', function(e) {{
             let target = e.target;
             while (target && target.tagName !== 'A') {{
                 target = target.parentElement;
             }}
             
-            if (target && target.href && target.href.startsWith('ely://')) {{
+            if (target && target.href && target.href.startsWith('mur://')) {{
                 e.preventDefault();
                 const encoded = btoa(unescape(encodeURIComponent(target.href))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
                 window.location.href = '/e/' + encoded;
@@ -371,7 +371,7 @@ fn inject_url_rewriter(html_content: &[u8], ely_url: &str) -> Vec<u8> {
     if (document.readyState === 'loading') {{
         // Wait for DOMContentLoaded
     }} else {{
-        const links = document.querySelectorAll('a[href^="ely://"]');
+        const links = document.querySelectorAll('a[href^="mur://"]');
         links.forEach(function(link) {{
             const href = link.getAttribute('href');
             if (href) {{

@@ -1,13 +1,13 @@
 //! TLS 1.3 camouflage transport.
 //!
-//! Wraps Elysium TCP connections in real TLS 1.3 using a self-signed certificate
+//! Wraps Murmuration TCP connections in real TLS 1.3 using a self-signed certificate
 //! with a plausible CDN hostname as the CN/SAN. An HTTP/1.1 WebSocket upgrade
 //! handshake is exchanged immediately after TLS, making the traffic byte-for-byte
 //! indistinguishable from HTTPS WebSocket to any passive observer or DPI device.
 //!
 //! Security model:
 //! - TLS provides the obfuscation layer (looks like HTTPS to ISPs)
-//! - Elysium's existing RSA node identity + X25519 session keys provide actual security
+//! - Murmuration's existing RSA node identity + X25519 session keys provide actual security
 //! - The TLS certificate is self-signed and accepted by both sides (we do our own auth)
 
 use crate::error::{MeshError, Result};
@@ -123,7 +123,7 @@ impl TlsCamouflage {
 ///
 /// The server config uses a fresh self-signed ECDSA P-256 certificate.
 /// The client config uses a custom verifier that accepts any certificate —
-/// actual peer authentication is handled by Elysium's RSA node identity system.
+/// actual peer authentication is handled by Murmuration's RSA node identity system.
 fn build_tls_configs(sni: &str) -> Result<(rustls::ServerConfig, rustls::ClientConfig)> {
     // Generate self-signed certificate (ECDSA P-256, expires in 10 years).
     let cert = rcgen::generate_simple_self_signed(vec![sni.to_string()])
@@ -144,7 +144,7 @@ fn build_tls_configs(sni: &str) -> Result<(rustls::ServerConfig, rustls::ClientC
         .with_single_cert(vec![server_cert], server_key)
         .map_err(|e| MeshError::Peer(format!("TLS server config failed: {}", e)))?;
 
-    // Client config: skip certificate validation (Elysium does its own peer auth).
+    // Client config: skip certificate validation (Murmuration does its own peer auth).
     let client_config = rustls::ClientConfig::builder()
         .with_safe_defaults()
         .with_custom_certificate_verifier(Arc::new(AcceptAnyCert))
@@ -156,7 +156,7 @@ fn build_tls_configs(sni: &str) -> Result<(rustls::ServerConfig, rustls::ClientC
 /// A `ServerCertVerifier` that accepts any certificate without validation.
 ///
 /// This is intentionally permissive: the TLS layer provides *obfuscation*,
-/// not authentication. Real peer authentication is handled by the Elysium
+/// not authentication. Real peer authentication is handled by the Murmuration
 /// RSA node identity + X25519 handshake that runs inside the TLS tunnel.
 #[derive(Debug)]
 struct AcceptAnyCert;
@@ -204,10 +204,10 @@ mod tests {
         let tcp = TcpStream::connect(addr).await.unwrap();
         let mut tls = camouflage.connect(tcp).await.unwrap();
 
-        let payload = b"elysium-hidden-payload";
+        let payload = b"murmuration-hidden-payload";
         tls.write_all(payload).await.unwrap();
 
-        let mut echo = [0u8; 22];
+        let mut echo = [0u8; 26];
         tls.read_exact(&mut echo).await.unwrap();
         assert_eq!(&echo, payload);
 

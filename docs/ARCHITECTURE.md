@@ -1,4 +1,4 @@
-# Elysium Architecture
+# Murmuration Architecture
 
 **Frugal, minimal, robust.**
 
@@ -10,7 +10,7 @@
 ┌─────────────────────────────┐
 │  Applications               │  Messenger, Sites, Search
 ├─────────────────────────────┤
-│  Naming                     │  ely://alice → node_id
+│  Naming                     │  mur://alice → node_id
 ├─────────────────────────────┤
 │  Content                    │  hash → data, propagation
 ├─────────────────────────────┤
@@ -62,14 +62,14 @@
 1. User publishes file
 2. Store in local content_store
 3. Generate hash: sha256(content)
-4. Address: ely://self/<path>
+4. Address: mur://self/<path>
 5. Announce to connected peers
 ```
 
 ### Fetching Content
 
 ```
-1. Request: ely://alice/profile
+1. Request: mur://alice/profile
 2. Resolve alice → node_id
 3. Check local cache
 4. If not cached: request from network

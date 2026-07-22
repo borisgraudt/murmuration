@@ -300,7 +300,7 @@ Two objections a reviewer will raise, pre-empted by sweeping the knobs
 oracle 76.7 throughout.
 
 **"You handicapped UCB1 with a bad exploration constant."** Sweeping
-`ELYSIUM_UCB1_C`:
+`MURMURATION_UCB1_C`:
 
 | C | 0.25 | 0.5 | 1.0 | 2.0 | 4.0 | 8.0 |
 |---|---|---|---|---|---|---|

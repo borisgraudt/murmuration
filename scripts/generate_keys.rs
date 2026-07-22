@@ -7,7 +7,7 @@ fn main() {
     println!("Generating PQC keys...");
     
     // Create keys directory if it doesn't exist
-    let keys_dir = Path::new(".ely/keys");
+    let keys_dir = Path::new(".mur/keys");
     if !keys_dir.exists() {
         fs::create_dir_all(keys_dir).expect("Failed to create keys directory");
     }

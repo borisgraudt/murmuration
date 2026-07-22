@@ -1,7 +1,7 @@
 /// Encryption module for secure P2P communication
 /// Implements RSA for key exchange and AES-GCM for message encryption.
 /// Protocol v2 adds X25519 ephemeral Diffie-Hellman for forward secrecy:
-///   session_key = HKDF-SHA256(ikm=DH_shared_secret, info=b"elysium-session-v2")[..32]
+///   session_key = HKDF-SHA256(ikm=DH_shared_secret, info=b"murmuration-session-v2")[..32]
 use crate::error::{MeshError, Result};
 #[allow(deprecated)] // aes-gcm 0.10 uses deprecated GenericArray from generic-array 0.14
 use aes_gcm::{
@@ -154,7 +154,7 @@ impl EncryptionManager {
     pub fn derive_session_key_hkdf(dh_shared: &[u8]) -> Key<Aes256Gcm> {
         let hk = Hkdf::<Sha256>::new(None, dh_shared);
         let mut okm = [0u8; 32];
-        hk.expand(b"elysium-session-v2", &mut okm)
+        hk.expand(b"murmuration-session-v2", &mut okm)
             .expect("HKDF expand should not fail for 32-byte output");
         Key::<Aes256Gcm>::from(okm)
     }

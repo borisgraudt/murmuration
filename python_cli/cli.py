@@ -50,7 +50,7 @@ class MeshLinkClient:
     
     def _discover_api_port(self) -> Optional[int]:
         """Try to find the API port of a running node"""
-        env_port = os.getenv("MESHLINK_API_PORT")
+        env_port = os.getenv("MURMURATION_API_PORT")
         if env_port:
             try:
                 port = int(env_port)

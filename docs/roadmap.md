@@ -1,4 +1,4 @@
-# MeshNet + Elysium Web MVP Roadmap
+# MeshNet + Murmuration Web MVP Roadmap
 
 **Цель:** Полнофункциональный MVP для MIT-портфолио к 1 января 2025
 
@@ -30,7 +30,7 @@
 - [ ] Интерактивный режим
 - [ ] Тесты
 
-### 4. Elysium Web (Web4.0) - **0% ГОТОВО**
+### 4. Murmuration Web (Web4.0) - **0% ГОТОВО**
 - [ ] Backend (Flask/FastAPI)
 - [ ] API endpoints
 - [ ] Frontend (React/vanilla JS)
@@ -102,7 +102,7 @@
 
 **Результат недели 2:** Рабочий Python CLI для управления узлами
 
---- ### **Неделя 3 (23-29 декабря): Elysium Web MVP**
+--- ### **Неделя 3 (23-29 декабря): Murmuration Web MVP**
 
 **День 1-2: Backend (FastAPI)**
 - [ ] Создать `web/backend/` директорию
@@ -199,7 +199,7 @@ pub fn calculate_score(metrics: &PeerMetrics) -> f64 {
 cli/
 ├── Cargo.toml (если нужен Rust FFI)
 ├── python/
-│  ├── meshlink_cli.py
+│  ├── murmuration_cli.py
 │  ├── client.py (TCP клиент)
 │  └── commands.py
 └── README.md
@@ -215,7 +215,7 @@ cli/
 
 **Время:** 8-10 часов
 
---- ### Шаг 4.1: Elysium Web Backend
+--- ### Шаг 4.1: Murmuration Web Backend
 
 **Структура:**
 ```
@@ -269,7 +269,7 @@ web/
   - Показать AI-routing выбор маршрута
 
 4. **Веб-интерфейс (20 сек):**
-  - Открыть Elysium Web
+  - Открыть Murmuration Web
   - Показать dashboard
   - Открыть mesh-сайт
 

@@ -1,5 +1,5 @@
-/// Content storage for Elysium mesh sites
-/// Stores content using key-value pairs: ely://<node_id>/<path> -> bytes
+/// Content storage for Murmuration mesh sites
+/// Stores content using key-value pairs: mur://<node_id>/<path> -> bytes
 use crate::error::{MeshError, Result};
 use std::path::Path;
 use std::sync::Arc;
@@ -25,7 +25,7 @@ impl ContentStore {
     }
 
     /// Store content at a specific path
-    /// Path format: ely://<node_id>/<path> or just <path> (node_id prepended automatically)
+    /// Path format: mur://<node_id>/<path> or just <path> (node_id prepended automatically)
     pub fn put(&self, path: &str, content: Vec<u8>) -> Result<()> {
         debug!("Storing content at {}: {} bytes", path, content.len());
 
@@ -114,7 +114,7 @@ mod tests {
         let store = ContentStore::new(temp_dir.path()).unwrap();
 
         // Put and get
-        let content = b"Hello, Elysium!".to_vec();
+        let content = b"Hello, Murmuration!".to_vec();
         store.put("test/page.html", content.clone()).unwrap();
 
         let retrieved = store.get("test/page.html").unwrap();

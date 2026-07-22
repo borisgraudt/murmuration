@@ -1,15 +1,15 @@
 #![allow(clippy::field_reassign_with_default)]
 /// Stability tests - ensure no panics, proper error handling, timeouts
 use base64::Engine;
-use meshlink_core::config::Config;
-use meshlink_core::node::Node;
+use murmuration::config::Config;
+use murmuration::node::Node;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::time::timeout;
 
 // Helper to create unique data dir for each test
 fn unique_data_dir(test_name: &str) -> PathBuf {
-    PathBuf::from(format!(".ely/test-{}-{}", test_name, std::process::id()))
+    PathBuf::from(format!(".mur/test-{}-{}", test_name, std::process::id()))
 }
 
 #[tokio::test]
@@ -26,7 +26,7 @@ async fn test_content_request_timeout() {
     let result = timeout(
         Duration::from_secs(2),
         node.fetch_content(
-            "ely://nonexistent_node/some/path",
+            "mur://nonexistent_node/some/path",
             Duration::from_millis(500),
         ),
     )
@@ -58,7 +58,7 @@ async fn test_invalid_url_handling() {
     config.listen_addr = "127.0.0.1:0".parse().unwrap();
     config.api_addr = Some("127.0.0.1:0".parse().unwrap());
     config.data_dir = Some(PathBuf::from(format!(
-        ".ely/test-invalid-url-{}",
+        ".mur/test-invalid-url-{}",
         std::process::id()
     )));
 
@@ -66,12 +66,12 @@ async fn test_invalid_url_handling() {
 
     // Test various invalid URLs - should not panic
     let invalid_urls = vec![
-        "not-an-ely-url",
-        "ely://",
-        "ely://node",
+        "not-an-mur-url",
+        "mur://",
+        "mur://node",
         "http://example.com",
         "",
-        "ely://node/",
+        "mur://node/",
     ];
 
     for url in invalid_urls {
@@ -143,7 +143,7 @@ async fn test_concurrent_content_requests() {
     for i in 0..5 {
         let node_clone = node_arc.clone();
         let handle = tokio::spawn(async move {
-            let url = format!("ely://node{}/path{}", i, i);
+            let url = format!("mur://node{}/path{}", i, i);
             node_clone
                 .fetch_content(&url, Duration::from_millis(100))
                 .await
@@ -178,7 +178,7 @@ async fn test_empty_content_store() {
     // Try to fetch local content that doesn't exist
     // Get node ID from status or use a known format
     let node_id = "test_node_id"; // We'll use a placeholder since id() might not be public
-    let local_url = format!("ely://{}/nonexistent/path", node_id);
+    let local_url = format!("mur://{}/nonexistent/path", node_id);
     let result = node.fetch_content(&local_url, Duration::from_secs(1)).await;
 
     // Should return Ok(None), not panic
@@ -208,7 +208,7 @@ async fn test_very_long_url() {
 
     // Create a very long URL
     let long_path = "a".repeat(10000);
-    let long_url = format!("ely://node/{}", long_path);
+    let long_url = format!("mur://node/{}", long_path);
 
     // Should handle gracefully, not panic
     let result = node
@@ -229,12 +229,12 @@ async fn test_special_characters_in_url() {
     let node = Node::new(config).unwrap();
 
     let special_urls = vec![
-        "ely://node/path with spaces",
-        "ely://node/path%20with%20encoding",
-        "ely://node/path\nwith\nnewlines",
-        "ely://node/path\twith\ttabs",
-        "ely://node/path/with/../parent",
-        "ely://node/path/with/../../root",
+        "mur://node/path with spaces",
+        "mur://node/path%20with%20encoding",
+        "mur://node/path\nwith\nnewlines",
+        "mur://node/path\twith\ttabs",
+        "mur://node/path/with/../parent",
+        "mur://node/path/with/../../root",
     ];
 
     for url in special_urls {

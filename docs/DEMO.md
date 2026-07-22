@@ -1,20 +1,20 @@
-# Elysium Complete Demo
+# Murmuration Complete Demo
 
 **Full test of all features in 10 minutes**
 
 ## Prerequisites
 
-Install `ely` first:
+Install `mur` first:
 ```bash
 make install
-# Or: cargo install --path core --bin ely
+# Or: cargo install --path core --bin mur
 ```
 
 --- ## Setup (3 terminals)
 
 ### Terminal 1: Node Alice (8080)
 ```bash
-ely start 8080
+mur start 8080
 ```
 
 Copy Alice's node_id from output:
@@ -29,7 +29,7 @@ ALICE_ID="Qm7xRJ..."  # Replace with actual ID
 
 --- ### Terminal 2: Node Bob (8081)
 ```bash
-ely start 8081 127.0.0.1:8080
+mur start 8081 127.0.0.1:8080
 ```
 
 Copy Bob's node_id:
@@ -50,12 +50,12 @@ INFO: Connected to peer 127.0.0.1:8080
 
 ```bash
 # Alice's node (CLI auto-discovers port 17080)
-ely status
-ely peers
+mur status
+mur peers
 
 # Bob's node (switch to Terminal 2 or specify port)
-MESHLINK_API_PORT=17081 ely status
-MESHLINK_API_PORT=17081 ely peers
+MURMURATION_API_PORT=17081 mur status
+MURMURATION_API_PORT=17081 mur peers
 ```
 
 **Expected:** Both nodes see each other as connected.
@@ -64,20 +64,20 @@ MESHLINK_API_PORT=17081 ely peers
 
 ```bash
 # Alice broadcasts (CLI finds port 17080 automatically)
-ely broadcast "Hello from Alice!"
+mur broadcast "Hello from Alice!"
 
 # Bob checks inbox (run in Terminal 2, or specify port)
-MESHLINK_API_PORT=17081 ely inbox 10
+MURMURATION_API_PORT=17081 mur inbox 10
 ```
 
 **Expected:** Bob sees Alice's message.
 
 ```bash
 # Bob sends to Alice (in Terminal 2 or with port)
-MESHLINK_API_PORT=17081 ely send $ALICE_ID "Hi Alice, this is Bob!"
+MURMURATION_API_PORT=17081 mur send $ALICE_ID "Hi Alice, this is Bob!"
 
 # Alice checks inbox (Terminal 1)
-ely inbox 10
+mur inbox 10
 ```
 
 **Expected:** Alice sees Bob's direct message.
@@ -86,7 +86,7 @@ ely inbox 10
 
 ```bash
 # In Terminal 1 or a 4th terminal:
-ely watch
+mur watch
 ```
 
 Send more messages and watch them appear in real-time!
@@ -95,13 +95,13 @@ Send more messages and watch them appear in real-time!
 
 ```bash
 # Alice publishes a website (Terminal 1)
-ely publish site/index.html "<h1>Alice's Site</h1><p>Welcome to Elysium!</p>"
+mur publish site/index.html "<h1>Alice's Site</h1><p>Welcome to Murmuration!</p>"
 
 # Copy the URL from output:
-# Content published at: ely://Qm7xRJ.../site/index.html
+# Content published at: mur://Qm7xRJ.../site/index.html
 
 # Bob fetches it (Terminal 2)
-MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/index.html
+MURMURATION_API_PORT=17081 mur fetch mur://$ALICE_ID/site/index.html
 ```
 
 **Expected:** Bob retrieves Alice's content.
@@ -113,10 +113,10 @@ MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/index.html
 echo "body { color: blue; }" > /tmp/style.css
 
 # Alice publishes it (Terminal 1)
-ely publish site/style.css @/tmp/style.css
+mur publish site/style.css @/tmp/style.css
 
 # Bob fetches it (Terminal 2)
-MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/style.css
+MURMURATION_API_PORT=17081 mur fetch mur://$ALICE_ID/site/style.css
 ```
 
 **Expected:** Bob gets the CSS file.
@@ -125,14 +125,14 @@ MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/style.css
 
 ```bash
 # Alice registers her name (Terminal 1)
-ely name register alice $ALICE_ID
+mur name register alice $ALICE_ID
 
 # Bob registers his name (Terminal 2)
-MESHLINK_API_PORT=17081 ely name register bob $BOB_ID
+MURMURATION_API_PORT=17081 mur name register bob $BOB_ID
 
 # Resolve names (Terminal 1)
-ely name resolve alice
-ely name resolve bob
+mur name resolve alice
+mur name resolve bob
 ```
 
 **Expected:**
@@ -145,19 +145,19 @@ ely name resolve bob
 
 ```bash
 # Alice sends more messages (Terminal 1)
-ely broadcast "Message 1 for bundle"
-ely broadcast "Message 2 for bundle"
-ely broadcast "Message 3 for bundle"
+mur broadcast "Message 1 for bundle"
+mur broadcast "Message 2 for bundle"
+mur broadcast "Message 3 for bundle"
 
 # Alice exports to bundle
-ely bundle export /tmp/alice_bundle.bin
+mur bundle export /tmp/alice_bundle.bin
 ```
 
 **Expected:** ` Bundle exported: 3+ messages`
 
 ```bash
 # Check bundle info
-ely bundle info /tmp/alice_bundle.bin
+mur bundle info /tmp/alice_bundle.bin
 ```
 
 **Expected:**
@@ -171,14 +171,14 @@ Bundle Info:
 
 ```bash
 # Simulate USB transfer: Bob imports the bundle (Terminal 2)
-MESHLINK_API_PORT=17081 ely bundle import /tmp/alice_bundle.bin
+MURMURATION_API_PORT=17081 mur bundle import /tmp/alice_bundle.bin
 ```
 
 **Expected:** ` Bundle imported: 3 delivered, 0 forwarded`
 
 ```bash
 # Bob checks inbox
-MESHLINK_API_PORT=17081 ely inbox 10
+MURMURATION_API_PORT=17081 mur inbox 10
 ```
 
 **Expected:** Bob sees all bundled messages.
@@ -187,7 +187,7 @@ MESHLINK_API_PORT=17081 ely inbox 10
 
 ```bash
 # Bob starts interactive chat (Terminal 2)
-MESHLINK_API_PORT=17081 ely chat $ALICE_ID
+MURMURATION_API_PORT=17081 mur chat $ALICE_ID
 ```
 
 Type messages and press Enter. They appear in Alice's `watch` terminal (from step 3).
@@ -198,10 +198,10 @@ Press `Ctrl+C` to exit chat.
 
 ```bash
 # Alice pings Bob (Terminal 1)
-ely ping $BOB_ID
+mur ping $BOB_ID
 
 # Bob pings Alice (Terminal 2)
-MESHLINK_API_PORT=17081 ely ping $ALICE_ID
+MURMURATION_API_PORT=17081 mur ping $ALICE_ID
 ```
 
 **Expected:**
@@ -235,7 +235,7 @@ MESHLINK_API_PORT=17081 ely ping $ALICE_ID
 ### Scenario 2: Censored Country
 1. Run node at home
 2. Publish news/content to mesh
-3. Friends fetch via `ely://` URLs
+3. Friends fetch via `mur://` URLs
 4. Content propagates without DNS/ISP
 
 ### Scenario 3: Emergency Communication
@@ -248,21 +248,21 @@ MESHLINK_API_PORT=17081 ely ping $ALICE_ID
 
 ```bash
 # Stop all nodes
-killall ely core
+killall mur core
 
 # Remove test data (optional)
-rm -rf .ely/
+rm -rf .mur/
 rm /tmp/alice_bundle.bin /tmp/style.css
 ```
 
 --- ## Next: Build Your App
 
-Elysium is now a **stable platform**. Build on top of it:
+Murmuration is now a **stable platform**. Build on top of it:
 
 - **Messenger** - Web UI or native app
 - **Social Network** - Decentralized posts/feed
-- **File Sharing** - BitTorrent-style over Elysium
-- **Website Hosting** - Static sites via `ely://`
+- **File Sharing** - BitTorrent-style over Murmuration
+- **Website Hosting** - Static sites via `mur://`
 - **Search Engine** - DHT-based content discovery
 
 **The foundation is complete. Now build the future.**

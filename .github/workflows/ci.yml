@@ -24,7 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build release
         working-directory: core
-        run: cargo build --release --bin core --bin viz --bin cli --bin ely
+        run: cargo build --release --bin core --bin viz --bin cli --bin mur
       - name: Upload binaries
         uses: actions/upload-artifact@v4
         with:
@@ -33,7 +33,7 @@ jobs:
             core/target/release/core
             core/target/release/cli
             core/target/release/viz
-            core/target/release/ely
+            core/target/release/mur
 
   python-tests:
     name: Python CLI Tests

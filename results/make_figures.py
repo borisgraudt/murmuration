@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publication figures for the Elysium routing benchmark.
+"""Publication figures for the Murmuration routing benchmark.
 
 Reads the tagged CSVs written by `cargo run --release --bin benchmark` and emits
 SVG (for the paper) and PNG (for slides/README) into `results/figures/`.

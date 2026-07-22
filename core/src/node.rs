@@ -5,7 +5,7 @@ use crate::ai::routing_logger::{
 /// Main node implementation
 use crate::config::Config;
 use crate::content_store::ContentStore;
-use crate::elysium::packet::ElysiumPacket;
+use crate::murmuration::packet::MurmurationPacket;
 use crate::error::{MeshError, Result};
 use crate::identity;
 use crate::message_store::MessageStore;
@@ -107,7 +107,7 @@ pub struct Node {
     /// Content store for mesh sites
     content_store: ContentStore,
 
-    /// Name registry (ely://name resolution)
+    /// Name registry (mur://name resolution)
     name_registry: NameRegistry,
 
     /// Message store (persistent history)
@@ -162,7 +162,7 @@ impl Node {
     pub fn new(mut config: Config) -> Result<Self> {
         // Ensure each node has a unique data directory based on port
         let data_dir = config.data_dir.clone().unwrap_or_else(|| {
-            std::path::PathBuf::from(format!(".ely/node-{}", config.listen_addr.port()))
+            std::path::PathBuf::from(format!(".mur/node-{}", config.listen_addr.port()))
         });
 
         // Warn if data_dir is explicitly set and might conflict with another node
@@ -440,7 +440,7 @@ impl Node {
             "bio": bio,
             "updated_at": chrono::Utc::now().to_rfc3339(),
         });
-        let url = format!("ely://{}/messenger/profile", self.id);
+        let url = format!("mur://{}/messenger/profile", self.id);
         self.content_store.put(
             &url,
             serde_json::to_vec(&profile).map_err(MeshError::Serialization)?,
@@ -453,7 +453,7 @@ impl Node {
         node_id: &str,
         timeout_dur: Duration,
     ) -> Result<Option<serde_json::Value>> {
-        let url = format!("ely://{}/messenger/profile", node_id);
+        let url = format!("mur://{}/messenger/profile", node_id);
         match self.fetch_content(&url, timeout_dur).await? {
             Some(bytes) => {
                 let v = serde_json::from_slice(&bytes).map_err(MeshError::Serialization)?;
@@ -781,14 +781,14 @@ impl Node {
     }
 
     /// Publish content to local content store
-    /// Path format: ely://<node_id>/<path> or just <path> (node_id is prepended)
+    /// Path format: mur://<node_id>/<path> or just <path> (node_id is prepended)
     pub async fn publish_content(&self, path: &str, content: Vec<u8>) -> Result<String> {
-        // Normalize path: ensure it starts with ely://<our_node_id>/
-        let full_path = if path.starts_with("ely://") {
+        // Normalize path: ensure it starts with mur://<our_node_id>/
+        let full_path = if path.starts_with("mur://") {
             path.to_string()
         } else {
             let clean_path = path.trim_start_matches('/');
-            format!("ely://{}/{}", self.id, clean_path)
+            format!("mur://{}/{}", self.id, clean_path)
         };
 
         info!(
@@ -805,12 +805,12 @@ impl Node {
     /// If URL is local (our node_id), fetch from local store
     /// Otherwise, send ContentRequest to network and wait for response
     pub async fn fetch_content(&self, url: &str, timeout_dur: Duration) -> Result<Option<Vec<u8>>> {
-        // Parse URL: ely://<node_id>/<path>
-        if !url.starts_with("ely://") {
+        // Parse URL: mur://<node_id>/<path>
+        if !url.starts_with("mur://") {
             return Err(MeshError::Protocol(format!("Invalid content URL: {}", url)));
         }
 
-        let url_parts: Vec<&str> = url.trim_start_matches("ely://").splitn(2, '/').collect();
+        let url_parts: Vec<&str> = url.trim_start_matches("mur://").splitn(2, '/').collect();
         if url_parts.len() < 2 {
             return Err(MeshError::Protocol(format!(
                 "Invalid content URL format: {}",
@@ -1612,7 +1612,7 @@ impl Node {
                     );
 
                     // Check if this request is for us
-                    if url.starts_with(&format!("ely://{}/", self.id)) {
+                    if url.starts_with(&format!("mur://{}/", self.id)) {
                         // We are the content owner, check if we have it
                         match self.content_store.get(&url) {
                             Ok(Some(content)) => {
@@ -2150,9 +2150,9 @@ impl Node {
         let is_broadcast = message.to.is_none();
         let is_for_us = self.router.is_for_us(&message);
 
-        // Decode ElysiumPacket if present (backward compatible: ignore errors)
-        let mut decoded_packet: Option<ElysiumPacket> = None;
-        if let Ok(packet) = ElysiumPacket::from_bytes(&message.data) {
+        // Decode MurmurationPacket if present (backward compatible: ignore errors)
+        let mut decoded_packet: Option<MurmurationPacket> = None;
+        if let Ok(packet) = MurmurationPacket::from_bytes(&message.data) {
             let dst = packet
                 .dst
                 .clone()
@@ -2160,7 +2160,7 @@ impl Node {
             let preview = String::from_utf8(packet.payload.clone())
                 .unwrap_or_else(|_| format!("{} bytes (binary)", packet.payload.len()));
             info!(
-                "📦 ElysiumPacket {} -> {} (via {}) Payload: {}",
+                "📦 MurmurationPacket {} -> {} (via {}) Payload: {}",
                 packet.src,
                 dst,
                 from_peer,
@@ -2406,8 +2406,8 @@ impl Node {
             full_content.clone()
         };
 
-        // Wrap into ElysiumPacket (future-proof for signatures/TOFU). Routing target remains MeshMessage.to.
-        let packet = ElysiumPacket::new(self.id.clone(), to.clone(), data);
+        // Wrap into MurmurationPacket (future-proof for signatures/TOFU). Routing target remains MeshMessage.to.
+        let packet = MurmurationPacket::new(self.id.clone(), to.clone(), data);
         let packet_bytes = packet.to_bytes()?;
 
         let mesh_msg = MeshMessage::new(self.id.clone(), to.clone(), packet_bytes);

@@ -1,6 +1,6 @@
 //! Routing benchmark: UCB1 (as shipped) vs flooding, random, heuristic, and an oracle.
 //!
-//! This harness drives the **real** `meshlink_core::ai::router::Router` — the same
+//! This harness drives the **real** `murmuration::ai::router::Router` — the same
 //! code paths a live node uses — rather than reimplementing UCB1. That is the whole
 //! point: the numbers describe the shipped router, not a copy of it.
 //!
@@ -46,8 +46,8 @@
 //!
 //! Run: `cargo run --release --bin benchmark`
 
-use meshlink_core::ai::router::{MeshMessage, Router};
-use meshlink_core::p2p::peer::{ConnectionState, PeerInfo, PeerMetrics};
+use murmuration::ai::router::{MeshMessage, Router};
+use murmuration::p2p::peer::{ConnectionState, PeerInfo, PeerMetrics};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::HashMap;

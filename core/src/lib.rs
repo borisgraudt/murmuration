@@ -6,7 +6,7 @@ pub mod config;
 pub mod contact_store;
 pub mod content_store;
 pub mod e2e;
-pub mod elysium;
+pub mod murmuration;
 /// MeshNet - Decentralized P2P Network Protocol
 ///
 /// A production-grade peer-to-peer networking library with protocol versioning,

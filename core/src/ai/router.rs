@@ -16,14 +16,14 @@ use tracing::{debug, warn};
 
 /// UCB1 exploration constant (standard value = 2.0).
 ///
-/// Read once from `ELYSIUM_UCB1_C` if set, else 2.0. The environment override
+/// Read once from `MURMURATION_UCB1_C` if set, else 2.0. The environment override
 /// exists only so the routing benchmark can sweep the exploration constant to
 /// show the results are not an artefact of one lucky value; in normal operation
 /// the variable is unset and this is exactly the textbook constant.
 fn ucb1_c() -> f64 {
     static C: OnceLock<f64> = OnceLock::new();
     *C.get_or_init(|| {
-        std::env::var("ELYSIUM_UCB1_C")
+        std::env::var("MURMURATION_UCB1_C")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(2.0)
@@ -38,31 +38,31 @@ const Q_ALPHA: f64 = 0.15;
 /// maximally good so each neighbour is tried at least once before estimates settle.
 const Q_INIT: f64 = 1.0;
 
-/// Elysium address format: ely://<node_id>
+/// Murmuration address format: mur://<node_id>
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ElysiumAddress {
+pub struct MurmurationAddress {
     pub node_id: String,
 }
 
-impl ElysiumAddress {
-    /// Parse from string format: ely://<node_id>
+impl MurmurationAddress {
+    /// Parse from string format: mur://<node_id>
     pub fn from_string(addr: &str) -> Result<Self> {
-        if let Some(stripped) = addr.strip_prefix("ely://") {
+        if let Some(stripped) = addr.strip_prefix("mur://") {
             Ok(Self {
                 node_id: stripped.to_string(),
             })
         } else {
             Err(MeshError::Protocol(format!(
-                "Invalid Elysium address format: {}",
+                "Invalid Murmuration address format: {}",
                 addr
             )))
         }
     }
 }
 
-impl fmt::Display for ElysiumAddress {
+impl fmt::Display for MurmurationAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ely://{}", self.node_id)
+        write!(f, "mur://{}", self.node_id)
     }
 }
 
@@ -740,20 +740,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_elysium_address_parse() {
-        let addr = ElysiumAddress::from_string("ely://node123").unwrap();
+    fn test_murmuration_address_parse() {
+        let addr = MurmurationAddress::from_string("mur://node123").unwrap();
         assert_eq!(addr.node_id, "node123");
 
-        let invalid = ElysiumAddress::from_string("invalid");
+        let invalid = MurmurationAddress::from_string("invalid");
         assert!(invalid.is_err());
     }
 
     #[test]
-    fn test_elysium_address_to_string() {
-        let addr = ElysiumAddress {
+    fn test_murmuration_address_to_string() {
+        let addr = MurmurationAddress {
             node_id: "node123".to_string(),
         };
-        assert_eq!(addr.to_string(), "ely://node123");
+        assert_eq!(addr.to_string(), "mur://node123");
     }
 
     #[tokio::test]

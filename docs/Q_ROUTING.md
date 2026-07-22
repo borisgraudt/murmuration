@@ -65,7 +65,7 @@ deliberately not claimed as working until that happens:
 
 Until step 4 passes, the paper's claim must read "Q-routing implemented in the
 router and validated in simulation; live-network evaluation is in progress" —
-never "elysium uses Q-routing."
+never "murmuration uses Q-routing."
 
 ## Design of the exchange
 

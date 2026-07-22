@@ -1,11 +1,11 @@
 /// Core P2P tests
 /// Integration tests for P2P protocol, encryption, and routing
 // In integration tests, the package is available as an external crate
-// Package name is "meshlink_core" to avoid conflict with std::core
-extern crate meshlink_core;
+// Package name is "murmuration" to avoid conflict with std::core
+extern crate murmuration;
 
-use meshlink_core::p2p::encryption::{EncryptionManager, SessionKeyManager};
-use meshlink_core::p2p::peer::PeerManager;
+use murmuration::p2p::encryption::{EncryptionManager, SessionKeyManager};
+use murmuration::p2p::peer::PeerManager;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
@@ -123,7 +123,7 @@ async fn test_handshake_incoming_connection() {
 
 #[tokio::test]
 async fn test_3_nodes_connectivity() {
-    use meshlink_core::{Config, Node};
+    use murmuration::{Config, Node};
     use std::sync::Arc;
 
     // Create 3 nodes with different ports (using high ports to avoid conflicts)
@@ -208,7 +208,7 @@ async fn test_3_nodes_connectivity() {
 
 #[tokio::test]
 async fn test_3_nodes_message_sending() {
-    use meshlink_core::{Config, Node};
+    use murmuration::{Config, Node};
     use std::sync::Arc;
 
     // Create 3 nodes
@@ -288,8 +288,8 @@ async fn test_3_nodes_message_sending() {
 
 #[tokio::test]
 async fn test_ai_routing_peer_selection() {
-    use meshlink_core::ai::router::Router;
-    use meshlink_core::p2p::peer::PeerMetrics;
+    use murmuration::ai::router::Router;
+    use murmuration::p2p::peer::PeerMetrics;
 
     // Create router
     let router = Router::new("our-node".to_string());
@@ -311,10 +311,10 @@ async fn test_ai_routing_peer_selection() {
     peer3_metrics.ping_failures = 1; // Medium reliability
 
     // Create mock peer infos
-    let peer1 = meshlink_core::p2p::peer::PeerInfo {
+    let peer1 = murmuration::p2p::peer::PeerInfo {
         node_id: "peer1".to_string(),
         address: "127.0.0.1:8081".parse().unwrap(),
-        state: meshlink_core::p2p::peer::ConnectionState::Connected,
+        state: murmuration::p2p::peer::ConnectionState::Connected,
         protocol_version: Some(1),
         last_seen: Some(std::time::Instant::now()),
         connected_at: Some(std::time::Instant::now() - std::time::Duration::from_secs(3600)), // 1 hour uptime
@@ -323,10 +323,10 @@ async fn test_ai_routing_peer_selection() {
         metrics: peer1_metrics,
     };
 
-    let peer2 = meshlink_core::p2p::peer::PeerInfo {
+    let peer2 = murmuration::p2p::peer::PeerInfo {
         node_id: "peer2".to_string(),
         address: "127.0.0.1:8082".parse().unwrap(),
-        state: meshlink_core::p2p::peer::ConnectionState::Connected,
+        state: murmuration::p2p::peer::ConnectionState::Connected,
         protocol_version: Some(1),
         last_seen: Some(std::time::Instant::now()),
         connected_at: Some(std::time::Instant::now() - std::time::Duration::from_secs(1800)), // 30 min uptime
@@ -335,10 +335,10 @@ async fn test_ai_routing_peer_selection() {
         metrics: peer2_metrics,
     };
 
-    let peer3 = meshlink_core::p2p::peer::PeerInfo {
+    let peer3 = murmuration::p2p::peer::PeerInfo {
         node_id: "peer3".to_string(),
         address: "127.0.0.1:8083".parse().unwrap(),
-        state: meshlink_core::p2p::peer::ConnectionState::Connected,
+        state: murmuration::p2p::peer::ConnectionState::Connected,
         protocol_version: Some(1),
         last_seen: Some(std::time::Instant::now()),
         connected_at: Some(std::time::Instant::now() - std::time::Duration::from_secs(2700)), // 45 min uptime
@@ -348,7 +348,7 @@ async fn test_ai_routing_peer_selection() {
     };
 
     // Create a mesh message
-    let message = meshlink_core::ai::router::MeshMessage::new(
+    let message = murmuration::ai::router::MeshMessage::new(
         "sender".to_string(),
         None, // broadcast
         b"test".to_vec(),
@@ -390,7 +390,7 @@ async fn test_ai_routing_peer_selection() {
 
 #[tokio::test]
 async fn test_ai_routing_latency_measurement() {
-    use meshlink_core::{Config, Node};
+    use murmuration::{Config, Node};
     use std::sync::Arc;
 
     // Create 2 nodes
@@ -448,7 +448,7 @@ async fn test_ai_routing_latency_measurement() {
 
 #[tokio::test]
 async fn test_ai_routing_message_forwarding() {
-    use meshlink_core::{Config, Node};
+    use murmuration::{Config, Node};
     use std::sync::Arc;
 
     // Create 3 nodes
@@ -531,7 +531,7 @@ async fn test_ai_routing_message_forwarding() {
 
 #[tokio::test]
 async fn test_cli_ping_peer_roundtrip() {
-    use meshlink_core::{Config, Node};
+    use murmuration::{Config, Node};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
     use tokio::time::sleep;

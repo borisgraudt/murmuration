@@ -1,5 +1,5 @@
 /// MeshLink P2P Node - Main entry point
-use meshlink_core::{Config, Node};
+use murmuration::{Config, Node};
 use std::env;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
     info!("   Node ID: {}", node.id);
     info!(
         "   Protocol Version: {}",
-        meshlink_core::p2p::PROTOCOL_VERSION
+        murmuration::p2p::PROTOCOL_VERSION
     );
 
     // Start the node (this will block until shutdown)

@@ -115,7 +115,7 @@ pub struct Config {
     /// Enable AI-routing debug output
     pub ai_debug: bool,
 
-    /// Optional data directory for persistent identity/keys (defaults to `.ely/node-<port>`)
+    /// Optional data directory for persistent identity/keys (defaults to `.mur/node-<port>`)
     pub data_dir: Option<PathBuf>,
 
     /// API server address for local clients (defaults to 127.0.0.1:(9000 + listen_port))
@@ -311,40 +311,40 @@ impl Config {
         }
 
         // Env overrides (nice for scripts)
-        if let Some(p) = std::env::var("MESHLINK_API_PORT")
+        if let Some(p) = std::env::var("MURMURATION_API_PORT")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
         {
             api_port = Some(p);
         }
-        if let Some(p) = std::env::var("MESHLINK_DISCOVERY_PORT")
+        if let Some(p) = std::env::var("MURMURATION_DISCOVERY_PORT")
             .ok()
             .and_then(|s| s.parse::<u16>().ok())
         {
             discovery_port = Some(p);
         }
-        if std::env::var("MESHLINK_NO_DISCOVERY").is_ok() {
+        if std::env::var("MURMURATION_NO_DISCOVERY").is_ok() {
             enable_discovery = false;
         }
-        if let Some(n) = std::env::var("MESHLINK_MAX_CONNECTIONS")
+        if let Some(n) = std::env::var("MURMURATION_MAX_CONNECTIONS")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
         {
             max_connections = Some(n);
         }
-        if let Some(n) = std::env::var("MESHLINK_CONNECT_COOLDOWN_MS")
+        if let Some(n) = std::env::var("MURMURATION_CONNECT_COOLDOWN_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
         {
             connect_cooldown_ms = Some(n);
         }
-        if let Some(n) = std::env::var("MESHLINK_MAX_CONNECT_IN_FLIGHT")
+        if let Some(n) = std::env::var("MURMURATION_MAX_CONNECT_IN_FLIGHT")
             .ok()
             .and_then(|s| s.parse::<usize>().ok())
         {
             max_connect_in_flight = Some(n);
         }
-        if let Some(n) = std::env::var("MESHLINK_CONNECT_BACKOFF_MAX_MS")
+        if let Some(n) = std::env::var("MURMURATION_CONNECT_BACKOFF_MAX_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
         {

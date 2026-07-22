@@ -1,4 +1,4 @@
-# Elysium Web - MeshNet Dashboard
+# Murmuration Web - MeshNet Dashboard
 
 Beautiful web dashboard for MeshNet in Claude Code style.
 

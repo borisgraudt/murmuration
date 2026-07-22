@@ -38,11 +38,11 @@ sleep 15
 
 echo ""
 echo "=== Node Status ==="
-MESHLINK_API_PORT=17082 cargo run --bin cli -- status 2>&1 | grep -v "warning\|Compiling\|Finished" | tail -5
+MURMURATION_API_PORT=17082 cargo run --bin cli -- status 2>&1 | grep -v "warning\|Compiling\|Finished" | tail -5
 
 echo ""
 echo "=== Connected Peers ==="
-MESHLINK_API_PORT=17082 cargo run --bin cli -- peers 2>&1 | grep -v "warning\|Compiling\|Finished" | tail -10
+MURMURATION_API_PORT=17082 cargo run --bin cli -- peers 2>&1 | grep -v "warning\|Compiling\|Finished" | tail -10
 
 echo ""
 echo "⏳ Waiting for ping/pong cycles to measure latency (20 seconds)..."
@@ -50,10 +50,10 @@ sleep 20
 
 echo ""
 echo "=== Sending test message to trigger AI-routing ==="
-PEER_ID=$(MESHLINK_API_PORT=17082 cargo run --bin cli -- peers 2>&1 | grep -v "warning\|Compiling\|Finished" | grep Connected | head -1 | awk '{print $1}')
+PEER_ID=$(MURMURATION_API_PORT=17082 cargo run --bin cli -- peers 2>&1 | grep -v "warning\|Compiling\|Finished" | grep Connected | head -1 | awk '{print $1}')
 if [ -n "$PEER_ID" ]; then
     echo "Sending message to peer: $PEER_ID"
-    MESHLINK_API_PORT=17082 cargo run --bin cli -- send "$PEER_ID" "AI-routing test message" 2>&1 | grep -v "warning\|Compiling\|Finished"
+    MURMURATION_API_PORT=17082 cargo run --bin cli -- send "$PEER_ID" "AI-routing test message" 2>&1 | grep -v "warning\|Compiling\|Finished"
     sleep 3
     
     echo ""

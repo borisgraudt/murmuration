@@ -121,7 +121,7 @@ pub async fn start_messenger_api(node: Node, port: u16) -> Result<()> {
 
     // Persist port for Swift to discover
     if let Ok(home) = std::env::var("HOME") {
-        let path = std::path::Path::new(&home).join(".elysium_messenger_port");
+        let path = std::path::Path::new(&home).join(".murmuration_messenger_port");
         let _ = std::fs::write(&path, port.to_string());
     }
 
@@ -310,7 +310,7 @@ async fn delete_contact(node_id: &str, node: &Node) -> Resp {
 }
 
 async fn get_own_profile(node: &Node) -> Resp {
-    let url = format!("ely://{}/messenger/profile", node.id);
+    let url = format!("mur://{}/messenger/profile", node.id);
     match node.fetch_content(&url, Duration::from_millis(500)).await {
         Ok(Some(bytes)) => {
             let v: serde_json::Value =
