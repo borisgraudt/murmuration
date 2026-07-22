@@ -1,13 +1,24 @@
-# Murmuration: A Delay-Tolerant Mesh Network with UCB1 Adaptive Routing
+# Murmuration: A Delay-Tolerant Mesh Network with Learned Routing
+
+[![crates.io](https://img.shields.io/crates/v/murmuration-routing.svg)](https://crates.io/crates/murmuration-routing)
+[![docs.rs](https://docs.rs/murmuration-routing/badge.svg)](https://docs.rs/murmuration-routing)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 Murmuration is a decentralized, censorship-resistant overlay network designed to
 operate without fixed infrastructure. Nodes communicate directly over TCP,
-discover peers via UDP multicast, and route messages using a
-**UCB1 multi-armed bandit** algorithm that learns from delivery outcomes at
-runtime.
+discover peers via UDP multicast, and route messages with an adaptive policy that
+learns from delivery outcomes at runtime.
 
 **Target scenarios:** protest coordination, disaster relief, and bypassing
 censorship — anywhere IP connectivity is unreliable or actively blocked.
+
+> **Routing research.** The shipped router uses a UCB1 bandit, but a study in
+> [`results/RESULTS.md`](results/RESULTS.md) shows *why bandit routing has a
+> structural ceiling*: the reward a relay observes is destination-agnostic. We
+> derive the exact bound, show UCB1 saturates it, and show that value
+> bootstrapping (Q-routing) breaks it — roughly doubling delivery under realistic
+> traffic. The reusable evaluation toolkit is published as the
+> [`murmuration-routing`](https://crates.io/crates/murmuration-routing) crate.
 
 ---
 
@@ -157,12 +168,28 @@ Key test files:
 
 ---
 
+## Routing study
+
+The routing benchmark drives the **real** shipped `Router` (not a reimplementation)
+against an exact oracle, and adds Q-routing as the fix for UCB1's ceiling.
+
+```bash
+cargo run --release --bin benchmark     # static-graph study → results/benchmark_*.csv
+cargo run --release --bin trace_bench   # delay-tolerant, contact-trace mobility
+python3 results/make_figures.py         # regenerate the 7 figures
+```
+
+Full write-up, tables, and figures: [`results/RESULTS.md`](results/RESULTS.md).
+Paper draft: [`paper/`](paper/). The contact-trace / oracle toolkit is reusable as
+the [`murmuration-routing`](https://crates.io/crates/murmuration-routing) crate.
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) — layer model, component diagram
 - [Protocol Spec](docs/PROTOCOL.md) — wire format, message types, routing
 - [Quickstart](docs/QUICKSTART.md) — step-by-step setup
 - [Troubleshooting](docs/TROUBLESHOOTING.md) — common issues
+- [Q-routing](docs/Q_ROUTING.md) — the destination-aware fix and its status
 
 ---
 

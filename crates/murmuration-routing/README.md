@@ -1,5 +1,9 @@
 # murmuration-routing
 
+[![crates.io](https://img.shields.io/crates/v/murmuration-routing.svg)](https://crates.io/crates/murmuration-routing)
+[![docs.rs](https://docs.rs/murmuration-routing/badge.svg)](https://docs.rs/murmuration-routing)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 A small, dependency-light toolkit for **evaluating delay-tolerant (mesh)
 routing**, extracted from the [murmuration](https://github.com/borisgraudt/murmuration)
 mesh network so it can be reused and cited on its own.
