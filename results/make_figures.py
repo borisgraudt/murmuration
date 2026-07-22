@@ -335,6 +335,75 @@ def fig_regret():
     save(fig, "fig5_regret")
 
 
+# ─── Figure 6 — hyperparameter robustness ────────────────────────────────────
+
+def fig_sweep():
+    """Q-routing clears the ceiling across every hyperparameter tested."""
+    path = os.path.join(HERE, "sweep.csv")
+    if not os.path.exists(path):
+        print("  (skipping fig6 — sweep.csv not found)")
+        return
+    rows = list(csv.DictReader(open(path)))
+    ceiling = float(rows[0]["agnostic_limit"])
+
+    panels = [
+        ("ucb1_c", "UCB1 exploration constant  $C$", "ucb1"),
+        ("q_alpha", "Q-routing rate  $\\alpha$", "q_routing"),
+        ("q_eps", "Q-routing exploration  $\\epsilon$", "q_routing"),
+    ]
+    fig, axes = plt.subplots(1, 3, figsize=(9.0, 3.2), sharey=True)
+    for ax, (sweep, xlabel, focus) in zip(axes, panels):
+        pts = [(float(r["value"]), float(r[focus])) for r in rows if r["sweep"] == sweep]
+        vals, ys = zip(*pts)
+        # Discrete settings → evenly spaced categorical x, so tick labels never
+        # collide (a log scale here injects its own minor labels on top of ours).
+        xs = list(range(len(vals)))
+        ax.axhline(ceiling, color=COLOR["agnostic_limit"], lw=1.6, ls="--",
+                   label="Agnostic ceiling")
+        ax.plot(xs, ys, color=COLOR[focus], lw=2, marker="o", ms=5,
+                markeredgecolor=SURFACE, markeredgewidth=1.1, label=LABEL[focus])
+        ax.set_xlabel(xlabel)
+        ax.set_xticks(xs)
+        ax.set_xticklabels([f"{v:g}" for v in vals], fontsize=7.5)
+        ax.set_xlim(-0.3, len(vals) - 0.7)
+        ax.set_ylim(0, 18)
+        ax.yaxis.set_major_formatter(PCT)
+        style(ax)
+    axes[0].set_ylabel("Delivery rate")
+    axes[1].set_title("Q-routing beats the ceiling across every setting; UCB1 never reaches it")
+    axes[0].legend(loc="upper right", fontsize=7)
+    save(fig, "fig6_hyperparameter_sweep")
+
+
+# ─── Figure 7 — high-traffic concentrated result (headline) ──────────────────
+
+def fig_hightraffic():
+    """The decisive result: 150k messages, concentrated traffic, 10 seeds."""
+    d = load("zipf1.2_150k")[0]
+    conds = [(50, 0.10), (50, 0.20)]
+    strat_order = ["ucb1", "agnostic_limit", "q_routing", "oracle"]
+
+    fig, ax = plt.subplots(figsize=(6.2, 3.6))
+    width = 0.19
+    xbase = list(range(len(conds)))
+    for i, strat in enumerate(strat_order):
+        ys = [d.get((strat, *c), (float("nan"), 0))[0] for c in conds]
+        es = [d.get((strat, *c), (0, 0))[1] for c in conds]
+        xs = [x + (i - 1.5) * width for x in xbase]
+        ax.bar(xs, ys, width, yerr=es, capsize=3,
+               color=COLOR[strat], label=LABEL[strat],
+               edgecolor=SURFACE, linewidth=0.8)
+
+    ax.set_xticks(xbase)
+    ax.set_xticklabels([f"n={n}, p={p:g}" for n, p in conds])
+    ax.set_ylabel("Delivery rate")
+    ax.yaxis.set_major_formatter(PCT)
+    ax.set_title("Concentrated traffic (s=1.2), 150k messages: Q-routing ≈ 2× the ceiling")
+    ax.legend(loc="upper left", ncol=2, fontsize=8)
+    style(ax)
+    save(fig, "fig7_hightraffic_concentrated")
+
+
 def main():
     print("Building figures...")
     delivery, tx = load("grid")
@@ -343,6 +412,8 @@ def main():
     fig_convergence()
     fig_overhead(delivery, tx)
     fig_regret()
+    fig_sweep()
+    fig_hightraffic()
     print(f"\nWrote to {FIGDIR}")
 
 

@@ -1,0 +1,17 @@
+sweep,param,value,ucb1,q_routing,agnostic_limit,oracle
+ucb1_c,ELYSIUM_UCB1_C,0.25,9.4,14.3,9.7,76.7
+ucb1_c,ELYSIUM_UCB1_C,0.5,9.5,14.3,9.7,76.7
+ucb1_c,ELYSIUM_UCB1_C,1.0,8.8,14.3,9.7,76.7
+ucb1_c,ELYSIUM_UCB1_C,2.0,8.2,14.3,9.7,76.7
+ucb1_c,ELYSIUM_UCB1_C,4.0,7.6,14.3,9.7,76.7
+ucb1_c,ELYSIUM_UCB1_C,8.0,7.2,14.3,9.7,76.7
+q_alpha,BENCH_QALPHA,0.05,8.2,15.0,9.7,76.7
+q_alpha,BENCH_QALPHA,0.10,8.2,14.9,9.7,76.7
+q_alpha,BENCH_QALPHA,0.15,8.2,14.3,9.7,76.7
+q_alpha,BENCH_QALPHA,0.30,8.2,13.4,9.7,76.7
+q_alpha,BENCH_QALPHA,0.50,8.2,10.8,9.7,76.7
+q_eps,BENCH_QEPS,0.01,8.2,15.7,9.7,76.7
+q_eps,BENCH_QEPS,0.02,8.2,16.0,9.7,76.7
+q_eps,BENCH_QEPS,0.05,8.2,14.3,9.7,76.7
+q_eps,BENCH_QEPS,0.10,8.2,13.2,9.7,76.7
+q_eps,BENCH_QEPS,0.20,8.2,11.7,9.7,76.7

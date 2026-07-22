@@ -102,6 +102,32 @@ pub enum Message {
         message_id: String, // ID of the acknowledged MeshMessage
         from: String,       // node_id of the acknowledging node
     },
+
+    /// Q-routing value advertisement — a neighbour's own best estimate of the
+    /// probability that a message for `dest` eventually arrives if handed to it.
+    /// Sent back to the node that forwarded a message so it can bootstrap its
+    /// Q-estimate (Boyan & Littman, 1994). Unknown to old peers, so ignored by
+    /// them — the mesh degrades to plain forwarding, never breaks.
+    #[serde(rename = "routing_estimate")]
+    RoutingEstimate {
+        message_id: String, // MeshMessage this estimate responds to
+        from: String,       // node_id advertising the estimate
+        dest: String,       // destination the estimate is about
+        /// Advertised delivery-probability estimate, quantised to per-mille
+        /// (0..=1000). Integer so `Message` keeps `Eq`; convert with the
+        /// `permille`/`from_permille` helpers.
+        value_permille: u16,
+    },
+}
+
+/// Convert a delivery-probability estimate in [0, 1] to per-mille (0..=1000).
+pub fn permille(value: f64) -> u16 {
+    (value.clamp(0.0, 1.0) * 1000.0).round() as u16
+}
+
+/// Inverse of [`permille`].
+pub fn from_permille(value: u16) -> f64 {
+    f64::from(value.min(1000)) / 1000.0
 }
 
 impl Message {
@@ -130,6 +156,7 @@ impl Message {
             Message::ContentRequest { .. } => "content_request",
             Message::ContentResponse { .. } => "content_response",
             Message::MessageAck { .. } => "message_ack",
+            Message::RoutingEstimate { .. } => "routing_estimate",
         }
     }
 }

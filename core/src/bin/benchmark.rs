@@ -339,13 +339,22 @@ impl Strategy {
 
 // ─── Q-routing ───────────────────────────────────────────────────────────────
 
-/// Q-routing learning rate.
-const Q_ALPHA: f64 = 0.15;
-/// Exploration rate for the ε-greedy behaviour policy.
-const Q_EPSILON: f64 = 0.05;
-/// Optimistic initialisation: unseen actions look maximally good, so every
-/// neighbour is tried before the estimates settle.
-const Q_INIT: f64 = 1.0;
+/// Q-routing hyperparameters. Defaults are the values reported in RESULTS.md;
+/// each is overridable (`BENCH_QALPHA`, `BENCH_QEPS`, `BENCH_QINIT`) so the sweep
+/// can show the Q-routing result is robust across a range, not a lucky setting.
+fn q_alpha() -> f64 {
+    env_f64("BENCH_QALPHA", 0.15)
+}
+fn q_epsilon() -> f64 {
+    env_f64("BENCH_QEPS", 0.05)
+}
+fn q_init() -> f64 {
+    env_f64("BENCH_QINIT", 1.0)
+}
+
+fn env_f64(key: &str, default: f64) -> f64 {
+    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+}
 
 /// `Q[u][(dest, neighbour)]` — node `u`'s estimate of the probability that a
 /// message for `dest` handed to `neighbour` eventually arrives.
@@ -355,17 +364,21 @@ const Q_INIT: f64 = 1.0;
 /// destination information backwards through the graph.
 struct QTables {
     tables: Vec<HashMap<(usize, usize), f64>>,
+    alpha: f64,
+    init: f64,
 }
 
 impl QTables {
     fn new(n: usize) -> Self {
         Self {
             tables: vec![HashMap::new(); n],
+            alpha: q_alpha(),
+            init: q_init(),
         }
     }
 
     fn get(&self, u: usize, dest: usize, v: usize) -> f64 {
-        *self.tables[u].get(&(dest, v)).unwrap_or(&Q_INIT)
+        *self.tables[u].get(&(dest, v)).unwrap_or(&self.init)
     }
 
     /// `max_w Q_v(dest, w)` — the value `v` would advertise for `dest`.
@@ -383,7 +396,7 @@ impl QTables {
     fn update(&mut self, u: usize, dest: usize, v: usize, target: f64) {
         let cur = self.get(u, dest, v);
         self.tables[u]
-            .insert((dest, v), (1.0 - Q_ALPHA) * cur + Q_ALPHA * target);
+            .insert((dest, v), (1.0 - self.alpha) * cur + self.alpha * target);
     }
 }
 
@@ -485,7 +498,7 @@ async fn route_unicast(
                 })
                 .unwrap(),
             Strategy::QRouting => {
-                if rng.gen::<f64>() < Q_EPSILON {
+                if rng.gen::<f64>() < q_epsilon() {
                     candidates[rng.gen_range(0..candidates.len())]
                 } else {
                     *candidates
