@@ -1,0 +1,17 @@
+[package]
+name = "murmuration-routing"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Delay-tolerant routing evaluation toolkit: contact traces with heavy-tailed synthetic mobility and an exact foremost-journey oracle."
+repository = "https://github.com/borisgraudt/murmuration"
+keywords = ["dtn", "routing", "mesh", "mobility", "opportunistic"]
+categories = ["network-programming", "simulation"]
+readme = "README.md"
+
+[dependencies]
+rand = "0.8"
+
+[lib]
+name = "murmuration_routing"
+path = "src/lib.rs"

@@ -23,7 +23,7 @@ pub mod node;
 pub mod onion;
 pub mod p2p;
 mod peer_store;
-pub mod trace;
+pub use murmuration_routing::trace;
 pub mod transport;
 pub mod url_handler;
 pub mod utils;
