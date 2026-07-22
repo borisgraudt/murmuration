@@ -5,12 +5,12 @@
 
 set -e
 
-echo "🧹 Cleaning up old processes..."
+echo " Cleaning up old processes..."
 pkill -f "target/.*/core" 2>/dev/null || true
 sleep 1
 
 echo ""
-echo "🚀 Starting 3 nodes for AI-routing test..."
+echo " Starting 3 nodes for AI-routing test..."
 echo ""
 
 # Start node 1
@@ -55,21 +55,21 @@ if [ -n "$PEER_ID" ]; then
     echo "Sending message to peer: $PEER_ID"
     MURMURATION_API_PORT=17082 cargo run --bin cli -- send "$PEER_ID" "AI-routing test message" 2>&1 | grep -v "warning\|Compiling\|Finished"
     sleep 3
-    
+
     echo ""
     echo "=== Checking AI-routing logs ==="
     echo "Node 1 AI-routing activity:"
     grep -E "(AI-Routing|Forwarding|Score)" /tmp/ai_test_node1.log | tail -5 || echo "No AI-routing activity yet"
-    
+
     echo ""
     echo "Node 2 AI-routing activity:"
     grep -E "(AI-Routing|Forwarding|Score)" /tmp/ai_test_node2.log | tail -5 || echo "No AI-routing activity yet"
-    
+
     echo ""
     echo "Node 3 AI-routing activity:"
     grep -E "(AI-Routing|Forwarding|Score)" /tmp/ai_test_node3.log | tail -5 || echo "No AI-routing activity yet"
 else
-    echo "⚠️ Could not find connected peer"
+    echo " Could not find connected peer"
 fi
 
 echo ""
@@ -78,12 +78,12 @@ echo "Checking for latency measurements in logs..."
 grep -E "(Latency to|ping|pong)" /tmp/ai_test_node*.log | tail -10 || echo "No latency measurements yet (ping happens every 30s on timeout)"
 
 echo ""
-echo "🧹 Cleaning up..."
+echo " Cleaning up..."
 kill $N1 $N2 $N3 2>/dev/null || true
 wait $N1 $N2 $N3 2>/dev/null || true
 
 echo ""
-echo "✅ AI-routing test completed!"
+echo " AI-routing test completed!"
 echo ""
 echo "To see full logs, check:"
 echo "  - /tmp/ai_test_node1.log"

@@ -5,7 +5,33 @@ All notable changes to Murmuration will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2024-12-XX - MVP Release
+## [0.2.0] - 2026-07-22 — Routing study + published crate
+
+### Added
+- **Routing research** (`results/RESULTS.md`): derived the exact
+  *destination-agnostic ceiling* of any peer-keyed bandit router; showed the
+  shipped UCB1 saturates it (~6× below a destination-aware oracle) with linear
+  regret; showed **Q-routing breaks the ceiling** (~2× delivery under
+  concentrated traffic, disjoint CIs); added a hyperparameter robustness sweep and
+  a delay-tolerant contact-trace benchmark. Seven publication figures.
+- **`murmuration-routing` crate** published to crates.io — a dependency-light DTN
+  evaluation toolkit (contact traces, heavy-tailed synthetic mobility, exact
+  foremost-journey oracle).
+- **Q-routing** in the real `Router` (`q_select_toward`, `q_advertised_value`,
+  `q_record`) with unit tests, plus the `RoutingEstimate` protocol message.
+  Live-node wiring documented as experimental (`docs/Q_ROUTING.md`).
+- Paper draft (`paper/`), Docker Compose demo (`docker-compose.yml`, `demo/`).
+
+### Changed
+- **Renamed** the project elysium → **Murmuration**: crate `meshlink_core` →
+  `murmuration`, URL scheme `ely://` → `mur://`, binary `ely` → `mur`, env vars
+  `MESHLINK_*`/`ELYSIUM_*` → `MURMURATION_*`.
+
+### Removed
+- Stale `docs/roadmap.md`; the superseded `simulate` benchmark binary; emoji from
+  docs; large regenerable data files.
+
+## [0.1.0] - 2024-12 — MVP Release
 
 ### Added
 - **Core P2P Protocol**

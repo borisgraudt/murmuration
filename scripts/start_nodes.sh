@@ -1,7 +1,7 @@
 #!/bin/bash
-# Start multiple MeshLink nodes for testing
+# Start multiple Murmuration nodes for testing
 
-echo "🚀 Starting MeshLink nodes..."
+echo " Starting Murmuration nodes..."
 echo ""
 
 # Colors
@@ -19,44 +19,44 @@ start_node() {
     local port=$1
     local bootstrap=$2
     local api_port=$((9000 + port))
-    
+
     if check_port $port; then
-        echo -e "${YELLOW}⚠ Port $port is already in use${NC}"
+        echo -e "${YELLOW} Port $port is already in use${NC}"
         return 1
     fi
-    
+
     echo -e "${GREEN}Starting node on port $port (API: $api_port)${NC}"
-    
+
     cd "$(dirname "$0")/../core" || exit 1
-    
+
     if [ -n "$bootstrap" ]; then
         MURMURATION_API_PORT=$api_port cargo run --bin core --release -- $port $bootstrap &
     else
         MURMURATION_API_PORT=$api_port cargo run --bin core --release -- $port &
     fi
-    
+
     sleep 2
     echo ""
 }
 
 # Start first node (bootstrap)
-echo "📡 Starting bootstrap node..."
+echo " Starting bootstrap node..."
 start_node 8080
 
 # Start second node (connects to first)
-echo "📡 Starting second node..."
+echo " Starting second node..."
 start_node 8081 "127.0.0.1:8080"
 
 # Start third node (optional)
 read -p "Start third node? (y/n) " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "📡 Starting third node..."
+    echo " Starting third node..."
     start_node 8082 "127.0.0.1:8080"
 fi
 
 echo ""
-echo "✅ Nodes started!"
+echo " Nodes started!"
 echo ""
 echo "To interact with nodes:"
 echo "  Node 1: MURMURATION_API_PORT=17080 python3 python_cli/cli.py status"

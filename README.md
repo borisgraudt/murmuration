@@ -108,6 +108,11 @@ docker run --rm -it -p 8080:8080 -p 9998:9998/udp \
   ghcr.io/borisgraudt/murmuration:main start 8080
 ```
 
+**Or a full 3-node mesh demo in one command:**
+```bash
+docker compose up --build   # see demo/README.md to publish & fetch across the mesh
+```
+
 ---
 
 ## Quick demo (3 nodes, one machine)

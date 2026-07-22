@@ -3,8 +3,8 @@
 
 cd "$(dirname "$0")/../web/frontend" || exit 1
 
-echo "🌐 Starting Murmuration Web interface..."
-echo "📍 Server: http://localhost:8081"
+echo " Starting Murmuration Web interface..."
+echo " Server: http://localhost:8081"
 echo ""
 echo "Press Ctrl+C to stop"
 echo ""

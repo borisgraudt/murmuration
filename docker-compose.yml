@@ -1,0 +1,40 @@
+# A 3-node Murmuration mesh you can bring up with one command:
+#
+#   docker compose up --build
+#
+# Each node exposes an HTTP gateway on a distinct host port. node2 bootstraps off
+# node1 and node3 off node2, so the mesh forms a chain and messages must be
+# routed hop-by-hop. Once up, see demo/README.md to publish content on one node
+# and fetch it across the mesh from another.
+#
+# Uses a locally built image by default; to use the published one instead, replace
+# `build: .` with `image: ghcr.io/borisgraudt/murmuration:main`.
+
+services:
+  node1:
+    build: .
+    image: murmuration:local
+    command: ["start", "8080", "--gateway", "8000"]
+    ports:
+      - "8001:8000"   # gateway → http://localhost:8001
+    networks: [mesh]
+
+  node2:
+    image: murmuration:local
+    command: ["start", "8080", "node1:8080", "--gateway", "8000"]
+    ports:
+      - "8002:8000"
+    depends_on: [node1]
+    networks: [mesh]
+
+  node3:
+    image: murmuration:local
+    command: ["start", "8080", "node2:8080", "--gateway", "8000"]
+    ports:
+      - "8003:8000"
+    depends_on: [node2]
+    networks: [mesh]
+
+networks:
+  mesh:
+    driver: bridge
