@@ -2,7 +2,7 @@
 
 **The Internet Without Internet**
 
-## 🚀 Quick Demo (3 minutes)
+## Quick Demo (3 minutes)
 
 ### Step 0: Install ely
 
@@ -13,9 +13,7 @@ make install
 
 Now you can use `ely` directly instead of `cargo run --bin ely --release --`
 
----
-
-### Step 1: Start two nodes
+--- ### Step 1: Start two nodes
 
 **Option A: Foreground (logs visible, Ctrl+C to stop)**
 ```bash
@@ -30,9 +28,9 @@ ely start 8081 127.0.0.1:8080
 ```bash
 # Terminal 1
 ely start 8080 -d
-# Output: ✓ Node started in background (PID: 12345)
-#         → Logs: .ely/node-8080/node-8080.log
-#         → Stop with: kill 12345
+# Output:  Node started in background (PID: 12345)
+# → Logs: .ely/node-8080/node-8080.log
+# → Stop with: kill 12345
 
 # Now you can use the same terminal for commands:
 ely status
@@ -64,7 +62,7 @@ ely watch
 # Publish some content
 ely publish site/index.html "<h1>Hello World</h1>"
 
-# Output: ✓ Content published at: ely://Qm7xRJ.../site/index.html
+# Output:  Content published at: ely://Qm7xRJ.../site/index.html
 
 # Fetch it back
 ely fetch ely://Qm7xRJ.../site/index.html
@@ -78,7 +76,7 @@ ely name register alice Qm7xRJ...
 
 # Resolve it
 ely name resolve alice
-# Output: ✓ alice → Qm7xRJ...
+# Output:  alice → Qm7xRJ...
 ```
 
 ### Step 5: Export/import bundles (USB transfer)
@@ -86,7 +84,7 @@ ely name resolve alice
 ```bash
 # Export messages to bundle
 ely bundle export /tmp/messages.bundle
-# Output: ✓ Bundle exported: 3 messages
+# Output:  Bundle exported: 3 messages
 
 # Check bundle info
 ely bundle info /tmp/messages.bundle
@@ -95,15 +93,13 @@ ely bundle info /tmp/messages.bundle
 # First, get Terminal 2's API port with: ely status
 # Then specify it explicitly:
 MESHLINK_API_PORT=17081 ely bundle import /tmp/messages.bundle
-# Output: ✓ Bundle imported: 3 delivered, 0 forwarded
+# Output:  Bundle imported: 3 delivered, 0 forwarded
 
 # Or switch to Terminal 2 and run directly:
 ely bundle import /tmp/messages.bundle
 ```
 
----
-
-## 📖 All CLI Commands
+--- ## All CLI Commands
 
 ### Node Management
 
@@ -136,12 +132,12 @@ ely broadcast <message>
 
 **Check inbox:**
 ```bash
-ely inbox [count]      # Default: 20 messages
+ely inbox [count]  # Default: 20 messages
 ```
 
 **Live watch (stream messages):**
 ```bash
-ely watch              # Press Ctrl+C to exit
+ely watch  # Press Ctrl+C to exit
 ```
 
 **Interactive chat:**
@@ -160,7 +156,7 @@ ely ping <peer_id> [timeout_ms]
 ```bash
 ely publish <path> <content>
 ely publish site/index.html "<h1>Hello</h1>"
-ely publish site/style.css @style.css    # Read from file
+ely publish site/style.css @style.css  # Read from file
 ```
 
 **Fetch content:**
@@ -197,9 +193,7 @@ ely bundle import <input_file>
 ely bundle info <bundle_file>
 ```
 
----
-
-## 🔧 Configuration
+--- ## Configuration
 
 ### API Port Auto-Discovery
 
@@ -223,11 +217,11 @@ MESHLINK_API_PORT=17081 ely status
 ### Environment Variables
 
 ```bash
-MESHLINK_API_PORT=17080              # API port
-MESHLINK_DISCOVERY_PORT=9998         # Discovery port (default)
-MESHLINK_NO_DISCOVERY=1              # Disable mDNS discovery
-MESHLINK_MAX_CONNECTIONS=10          # Max peer connections
-MESHLINK_CONNECT_COOLDOWN_MS=5000    # Connection retry cooldown
+MESHLINK_API_PORT=17080  # API port
+MESHLINK_DISCOVERY_PORT=9998  # Discovery port (default)
+MESHLINK_NO_DISCOVERY=1  # Disable mDNS discovery
+MESHLINK_MAX_CONNECTIONS=10  # Max peer connections
+MESHLINK_CONNECT_COOLDOWN_MS=5000  # Connection retry cooldown
 ```
 
 ### Data Directory
@@ -239,9 +233,7 @@ Node data is stored in `.ely/node-<port>/`:
 - `names.db` - Name registry
 - `peers.cache` - Discovered peers
 
----
-
-## 💡 Use Cases
+--- ## Use Cases
 
 ### 1. Offline Messenger
 Run nodes on phones/laptops with WiFi Direct, exchange messages without internet.
@@ -255,9 +247,7 @@ Messages are stored and forwarded when peers come online.
 ### 4. Content Publishing
 Publish websites/files that propagate through the mesh.
 
----
-
-## 🐛 Troubleshooting
+--- ## Troubleshooting
 
 ### Port already in use
 
@@ -289,9 +279,7 @@ MESHLINK_API_PORT=17080 ely status
 2. Wait for discovery (~5 seconds)
 3. Check API port matches node port
 
----
-
-## 📚 Next Steps
+--- ## Next Steps
 
 - Read [PROTOCOL.md](PROTOCOL.md) for wire protocol details
 - Read [ARCHITECTURE.md](ARCHITECTURE.md) for system design

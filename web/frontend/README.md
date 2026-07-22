@@ -42,12 +42,12 @@ const API_BASE = 'https://your-api-domain.com/api';
 
 ## Features
 
-- 🎨 Claude Code inspired dark theme
-- 📊 Real-time network status
-- 👥 Peer list with connection status
-- 💬 Mesh chat interface
-- 🌐 Mesh sites browser
-- 📱 Responsive design
+- Claude Code inspired dark theme
+- Real-time network status
+- Peer list with connection status
+- Mesh chat interface
+- Mesh sites browser
+- Responsive design
 
 
 

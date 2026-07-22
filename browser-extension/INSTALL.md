@@ -1,6 +1,6 @@
 # Инструкция по установке и использованию Elysium Chrome Extension
 
-## 📦 Установка расширения
+## Установка расширения
 
 ### Шаг 1: Открой Chrome Extensions
 1. Открой Chrome
@@ -19,29 +19,27 @@
 - Расширение должно появиться в списке
 - Иконка "E" должна появиться в панели расширений Chrome
 
----
-
-## 🚀 Использование
+--- ## Использование
 
 ### Вариант 1: Прямой клик на ely:// ссылку
 
 1. **Запусти узел:**
-   ```bash
-   ely start 8080 -d
-   ```
+  ```bash
+  ely start 8080 -d
+  ```
 
 2. **Опубликуй контент:**
-   ```bash
-   ely publish site/test.html "<h1>Hello Elysium!</h1>"
-   ```
-   Скопируй URL из вывода (например: `ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html`)
+  ```bash
+  ely publish site/test.html "<h1>Hello Elysium!</h1>"
+  ```
+  Скопируй URL из вывода (например: `ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html`)
 
 3. **Создай тестовую ссылку:**
-   - Создай HTML файл с ссылкой:
-   ```bash
-   echo '<a href="ely://ТВОЙ_URL_СЮДА/site/test.html">Открыть ely://</a>' > /tmp/test.html
-   open /tmp/test.html
-   ```
+  - Создай HTML файл с ссылкой:
+  ```bash
+  echo '<a href="ely://ТВОЙ_URL_СЮДА/site/test.html">Открыть ely://</a>' > /tmp/test.html
+  open /tmp/test.html
+  ```
 
 4. **Кликни на ссылку** → Расширение автоматически откроет через Web Gateway
 
@@ -57,9 +55,7 @@
 ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html"
 ```
 
----
-
-## ⚙️ Настройки
+--- ## Настройки
 
 1. Кликни на иконку расширения (E) в панели Chrome
 2. Настрой порт Web Gateway (по умолчанию 17081)
@@ -67,9 +63,7 @@ ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.ht
 
 **Примечание:** Порт должен быть на 1 больше чем API порт узла (API порт = P2P порт + 9000)
 
----
-
-## 🔍 Что происходит
+--- ## Что происходит
 
 1. **Клик на ely:// ссылку** → Расширение перехватывает
 2. **Расширение кодирует URL** → `ely://...` → base64 → `/e/...`
@@ -77,27 +71,23 @@ ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.ht
 4. **Web Gateway загружает контент** из mesh сети
 5. **JavaScript обновляет title** страницы на оригинальный `ely://` URL
 
----
-
-## ⚠️ Важно знать
+--- ## Важно знать
 
 **Chrome не позволяет показывать кастомный протокол `ely://` в адресной строке** из соображений безопасности.
 
 Что работает:
-- ✅ Перехват `ely://` навигации
-- ✅ Автоматическое перенаправление на Web Gateway
-- ✅ Обновление title страницы на `ely://` URL
-- ✅ Обработка кликов на `ely://` ссылки
+- Перехват `ely://` навигации
+- Автоматическое перенаправление на Web Gateway
+- Обновление title страницы на `ely://` URL
+- Обработка кликов на `ely://` ссылки
 
 Что не работает:
-- ❌ Показ `ely://` в адресной строке (ограничение браузера)
+- Показ `ely://` в адресной строке (ограничение браузера)
 
-**В адресной строке будет:** `http://localhost:17081/e/...`  
+**В адресной строке будет:** `http://localhost:17081/e/...`
 **Но в title страницы будет:** `ely://...`
 
----
-
-## 🐛 Troubleshooting
+--- ## Troubleshooting
 
 ### Расширение не перехватывает ely:// ссылки
 
@@ -117,9 +107,7 @@ ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.ht
 2. Установи правильный порт (API порт + 1)
 3. Сохрани настройки
 
----
-
-## 📝 Примеры использования
+--- ## Примеры использования
 
 ### Пример 1: Открыть ely:// из терминала
 
@@ -143,8 +131,8 @@ ely handle-url "ely://ТВОЙ_NODE_ID/site/news.html"
 <body>
   <h1>Elysium Content</h1>
   <ul>
-    <li><a href="ely://node1/site/page1.html">Page 1</a></li>
-    <li><a href="ely://node2/site/page2.html">Page 2</a></li>
+  <li><a href="ely://node1/site/page1.html">Page 1</a></li>
+  <li><a href="ely://node2/site/page2.html">Page 2</a></li>
   </ul>
 </body>
 </html>
@@ -152,9 +140,7 @@ ely handle-url "ely://ТВОЙ_NODE_ID/site/news.html"
 
 Клик по любой ссылке автоматически откроет через Web Gateway.
 
----
-
-## 🎯 Итого
+--- ## Итого
 
 **Текущее поведение:**
 - Клик на `ely://` → открывается `http://localhost:17081/e/...`

@@ -16,9 +16,7 @@ make install
 ely start 8080
 ```
 
----
-
-## Installation Options
+--- ## Installation Options
 
 ### 1. Make Install (Recommended)
 
@@ -34,26 +32,20 @@ echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc  # or ~/.bashrc
 source ~/.zshrc
 ```
 
----
-
-### 2. Cargo Install from Source
+--- ### 2. Cargo Install from Source
 
 ```bash
 cd elysium/core
 cargo install --path . --bin ely
 ```
 
----
-
-### 3. Cargo Install from GitHub
+--- ### 3. Cargo Install from GitHub
 
 ```bash
 cargo install --git https://github.com/borisgraudt/elysium.git --package meshlink_core --bin ely
 ```
 
----
-
-### 4. Manual Build + Symlink
+--- ### 4. Manual Build + Symlink
 
 ```bash
 cd elysium/core
@@ -68,9 +60,7 @@ ln -s $(pwd)/target/release/ely ~/bin/ely
 export PATH="$HOME/bin:$PATH"  # Add to ~/.zshrc or ~/.bashrc
 ```
 
----
-
-### 5. Docker
+--- ### 5. Docker
 
 ```bash
 docker pull ghcr.io/borisgraudt/elysium:main
@@ -82,9 +72,7 @@ docker run --rm -it \
   ghcr.io/borisgraudt/elysium:main start 8080
 ```
 
----
-
-## Verify Installation
+--- ## Verify Installation
 
 ```bash
 # Check version/help
@@ -103,9 +91,7 @@ ely broadcast "Hello Elysium!"
 ely inbox
 ```
 
----
-
-## Troubleshooting
+--- ## Troubleshooting
 
 ### `ely: command not found`
 
@@ -116,9 +102,7 @@ echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
----
-
-### `MESHLINK_API_PORT` still required?
+--- ### `MESHLINK_API_PORT` still required?
 
 **Not anymore!** CLI auto-discovers running nodes.
 
@@ -133,9 +117,7 @@ source ~/.zshrc
 MESHLINK_API_PORT=17081 ely status
 ```
 
----
-
-### Port already in use
+--- ### Port already in use
 
 ```bash
 # Find process using port 8080
@@ -145,9 +127,7 @@ lsof -i :8080
 killall ely core
 ```
 
----
-
-### Build fails
+--- ### Build fails
 
 **Install Rust:**
 ```bash
@@ -160,13 +140,11 @@ source $HOME/.cargo/env
 rustup update
 ```
 
----
-
-## Next Steps
+--- ## Next Steps
 
 - **[Quick Demo](docs/DEMO.md)** — 10-minute full feature test
 - **[Quickstart](docs/QUICKSTART.md)** — Getting started guide
 - **[README](README.md)** — Project overview
 
-**Ready to build on Elysium?** The platform is stable. Start now! 🚀
+**Ready to build on Elysium?** The platform is stable. Start now!
 

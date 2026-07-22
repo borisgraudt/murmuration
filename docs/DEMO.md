@@ -10,9 +10,7 @@ make install
 # Or: cargo install --path core --bin ely
 ```
 
----
-
-## Setup (3 terminals)
+--- ## Setup (3 terminals)
 
 ### Terminal 1: Node Alice (8080)
 ```bash
@@ -29,9 +27,7 @@ Save it:
 ALICE_ID="Qm7xRJ..."  # Replace with actual ID
 ```
 
----
-
-### Terminal 2: Node Bob (8081)
+--- ### Terminal 2: Node Bob (8081)
 ```bash
 ely start 8081 127.0.0.1:8080
 ```
@@ -46,9 +42,7 @@ Wait for connection message:
 INFO: Connected to peer 127.0.0.1:8080
 ```
 
----
-
-## Demo Script
+--- ## Demo Script
 
 ### Terminal 3: Run all commands
 
@@ -66,9 +60,7 @@ MESHLINK_API_PORT=17081 ely peers
 
 **Expected:** Both nodes see each other as connected.
 
----
-
-#### 2. Messaging
+--- #### 2. Messaging
 
 ```bash
 # Alice broadcasts (CLI finds port 17080 automatically)
@@ -90,9 +82,7 @@ ely inbox 10
 
 **Expected:** Alice sees Bob's direct message.
 
----
-
-#### 3. Live watch (keep running in background)
+--- #### 3. Live watch (keep running in background)
 
 ```bash
 # In Terminal 1 or a 4th terminal:
@@ -101,16 +91,14 @@ ely watch
 
 Send more messages and watch them appear in real-time!
 
----
-
-#### 4. Content Publishing
+--- #### 4. Content Publishing
 
 ```bash
 # Alice publishes a website (Terminal 1)
 ely publish site/index.html "<h1>Alice's Site</h1><p>Welcome to Elysium!</p>"
 
 # Copy the URL from output:
-# ✓ Content published at: ely://Qm7xRJ.../site/index.html
+# Content published at: ely://Qm7xRJ.../site/index.html
 
 # Bob fetches it (Terminal 2)
 MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/index.html
@@ -118,9 +106,7 @@ MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/index.html
 
 **Expected:** Bob retrieves Alice's content.
 
----
-
-#### 5. Publish from file
+--- #### 5. Publish from file
 
 ```bash
 # Create a test file
@@ -135,9 +121,7 @@ MESHLINK_API_PORT=17081 ely fetch ely://$ALICE_ID/site/style.css
 
 **Expected:** Bob gets the CSS file.
 
----
-
-#### 6. Naming System
+--- #### 6. Naming System
 
 ```bash
 # Alice registers her name (Terminal 1)
@@ -157,9 +141,7 @@ ely name resolve bob
 
 **Note:** Currently naming is local-only (no network propagation yet).
 
----
-
-#### 7. Bundle Protocol (USB Transfer Simulation)
+--- #### 7. Bundle Protocol (USB Transfer Simulation)
 
 ```bash
 # Alice sends more messages (Terminal 1)
@@ -171,7 +153,7 @@ ely broadcast "Message 3 for bundle"
 ely bundle export /tmp/alice_bundle.bin
 ```
 
-**Expected:** `✓ Bundle exported: 3+ messages`
+**Expected:** ` Bundle exported: 3+ messages`
 
 ```bash
 # Check bundle info
@@ -192,7 +174,7 @@ Bundle Info:
 MESHLINK_API_PORT=17081 ely bundle import /tmp/alice_bundle.bin
 ```
 
-**Expected:** `✓ Bundle imported: 3 delivered, 0 forwarded`
+**Expected:** ` Bundle imported: 3 delivered, 0 forwarded`
 
 ```bash
 # Bob checks inbox
@@ -201,9 +183,7 @@ MESHLINK_API_PORT=17081 ely inbox 10
 
 **Expected:** Bob sees all bundled messages.
 
----
-
-#### 8. Interactive Chat
+--- #### 8. Interactive Chat
 
 ```bash
 # Bob starts interactive chat (Terminal 2)
@@ -214,9 +194,7 @@ Type messages and press Enter. They appear in Alice's `watch` terminal (from ste
 
 Press `Ctrl+C` to exit chat.
 
----
-
-#### 9. Ping Test
+--- #### 9. Ping Test
 
 ```bash
 # Alice pings Bob (Terminal 1)
@@ -228,14 +206,12 @@ MESHLINK_API_PORT=17081 ely ping $ALICE_ID
 
 **Expected:**
 ```
-✓ Pong from Qm... in 2.34 ms
+ Pong from Qm... in 2.34 ms
 ```
 
----
+--- ## Summary
 
-## Summary
-
-✅ **What we tested:**
+ **What we tested:**
 
 1. **P2P Connection** - Two nodes connected via TCP
 2. **Discovery** - Automatic peer discovery via mDNS
@@ -248,9 +224,7 @@ MESHLINK_API_PORT=17081 ely ping $ALICE_ID
 9. **Interactive Chat** - TUI-style messaging
 10. **Ping** - Latency measurement
 
----
-
-## Real-World Scenarios
+--- ## Real-World Scenarios
 
 ### Scenario 1: Protest Coordination (No Internet)
 1. Protesters run nodes on phones (WiFi Direct)
@@ -270,9 +244,7 @@ MESHLINK_API_PORT=17081 ely ping $ALICE_ID
 3. Bundles transferred via runners with USB drives
 4. Messages reach remote areas
 
----
-
-## Cleanup
+--- ## Cleanup
 
 ```bash
 # Stop all nodes
@@ -283,9 +255,7 @@ rm -rf .ely/
 rm /tmp/alice_bundle.bin /tmp/style.css
 ```
 
----
-
-## Next: Build Your App
+--- ## Next: Build Your App
 
 Elysium is now a **stable platform**. Build on top of it:
 
@@ -295,5 +265,5 @@ Elysium is now a **stable platform**. Build on top of it:
 - **Website Hosting** - Static sites via `ely://`
 - **Search Engine** - DHT-based content discovery
 
-**The foundation is complete. Now build the future.** 🚀
+**The foundation is complete. Now build the future.**
 
