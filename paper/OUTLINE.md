@@ -18,7 +18,7 @@ the result is robust to hyperparameters.
 
 ## 1. Introduction
 - Adaptive mesh routing picks next hops from observed outcomes; bandits (UCB1)
-  are a natural, popular choice, and are what murmuration/nyx shipped.
+  are a natural, popular choice, and are what murmuration shipped.
 - Contribution: (i) an exact upper bound on the whole peer-keyed class
   (`agnostic_limit`); (ii) empirical proof UCB1 saturates it; (iii) Q-routing as
   the fix, with a significant win under concentrated traffic; (iv) a hyperparameter
