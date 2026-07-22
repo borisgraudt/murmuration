@@ -6,7 +6,7 @@
 # The published image lives at ghcr.io/borisgraudt/murmuration (see
 # .github/workflows/packages.yml).
 
-FROM rust:1.85-slim AS builder
+FROM rust:1.90-slim AS builder
 WORKDIR /src
 
 # System deps for the node's crypto/TLS stack.
