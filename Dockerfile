@@ -18,6 +18,7 @@ COPY Cargo.toml Cargo.lock* ./
 COPY core/Cargo.toml core/Cargo.toml
 COPY crates/murmuration-routing/Cargo.toml crates/murmuration-routing/Cargo.toml
 COPY core/src core/src
+COPY core/benches core/benches
 COPY crates/murmuration-routing/src crates/murmuration-routing/src
 COPY crates/murmuration-routing/README.md crates/murmuration-routing/README.md
 COPY crates/murmuration-routing/LICENSE crates/murmuration-routing/LICENSE
