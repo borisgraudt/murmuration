@@ -4,8 +4,7 @@
 ///
 /// UCB1 state is persisted to sled under the key "ucb1_state" so that learned peer
 /// quality survives node restarts.
-use crate::error::{MeshError, Result};
-use crate::p2p::protocol::Message;
+use crate::error::{RoutingError, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
@@ -52,7 +51,7 @@ impl MurmurationAddress {
                 node_id: stripped.to_string(),
             })
         } else {
-            Err(MeshError::Protocol(format!(
+            Err(RoutingError::Protocol(format!(
                 "Invalid Murmuration address format: {}",
                 addr
             )))
@@ -90,49 +89,27 @@ impl MeshMessage {
         }
     }
 
-    /// Convert to protocol message
-    pub fn to_protocol_message(&self) -> Message {
-        Message::MeshMessage {
-            from: self.from.clone(),
-            to: self.to.clone(),
-            data: self.data.clone(),
-            message_id: self.message_id.clone(),
-            ttl: self.ttl,
-            path: self.path.clone(),
-        }
-    }
-
-    /// Create from protocol message
-    pub fn from_protocol_message(msg: &Message) -> Option<Self> {
-        if let Message::MeshMessage {
-            from,
-            to,
-            data,
-            message_id,
-            ttl,
-            path,
-        } = msg
-        {
-            Some(Self {
-                from: from.clone(),
-                to: to.clone(),
-                data: data.clone(),
-                message_id: message_id.clone(),
-                ttl: *ttl,
-                path: path.clone(),
-            })
-        } else {
-            None
-        }
-    }
+    // Conversion to/from the node's wire `Message` lives in the parent crate
+    // (see `core/src/ai/adapter.rs`), keeping this crate free of the protocol type.
 }
 
-const UCB1_DB_KEY: &[u8] = b"ucb1_state_v1";
+/// Persistence backend for the router's learned UCB1 state.
+///
+/// The crate stays storage-agnostic: it hands the serialized state to `save` and
+/// asks for it back via `load`. The node supplies a sled-backed implementation;
+/// tests and the benchmark use none.
+pub trait RouterStore: Send + Sync {
+    /// Return previously-saved state bytes, if any.
+    fn load(&self) -> Option<Vec<u8>>;
+    /// Persist state bytes (best-effort; errors are the implementation's to log).
+    fn save(&self, bytes: &[u8]);
+}
 
 /// Router for mesh message routing.
 /// Peer selection uses UCB1 (multi-armed bandit) once sufficient samples exist;
 /// falls back to a heuristic score during cold-start.
-/// UCB1 state is persisted to sled so learned topology survives restarts.
+/// UCB1 state is persisted via an optional [`RouterStore`] so learned topology
+/// survives restarts.
 pub struct Router {
     our_node_id: String,
     seen_messages: Arc<RwLock<HashMap<String, Instant>>>, // message_id -> timestamp
@@ -140,8 +117,8 @@ pub struct Router {
     route_history: Arc<RwLock<HashMap<String, RouteStats>>>, // peer_id -> heuristic stats
     ucb_state: Arc<RwLock<UcbState>>,                     // UCB1 bandit state
     q_state: Arc<RwLock<QRoutingState>>,                  // Q-routing estimates
-    /// Optional sled tree for persisting UCB1 state across restarts.
-    db: Option<Arc<sled::Tree>>,
+    /// Optional persistence backend for UCB1 state across restarts.
+    store: Option<Arc<dyn RouterStore>>,
 }
 
 /// Q-routing state (Boyan & Littman, 1994).
@@ -305,18 +282,15 @@ impl Router {
             route_history: Arc::new(RwLock::new(HashMap::new())),
             ucb_state: Arc::new(RwLock::new(UcbState::default())),
             q_state: Arc::new(RwLock::new(QRoutingState::default())),
-            db: None,
+            store: None,
         }
     }
 
-    /// Create a router backed by `sled_tree` for UCB1 state persistence.
+    /// Create a router backed by `store` for UCB1 state persistence.
     /// Previously learned peer quality is loaded immediately.
-    pub fn with_db(our_node_id: String, sled_tree: sled::Tree) -> Self {
-        let db = Arc::new(sled_tree);
-        let initial_state = db
-            .get(UCB1_DB_KEY)
-            .ok()
-            .flatten()
+    pub fn with_store(our_node_id: String, store: Arc<dyn RouterStore>) -> Self {
+        let initial_state = store
+            .load()
             .and_then(|bytes| serde_json::from_slice::<UcbState>(&bytes).ok())
             .unwrap_or_default();
         Self {
@@ -326,20 +300,16 @@ impl Router {
             route_history: Arc::new(RwLock::new(HashMap::new())),
             ucb_state: Arc::new(RwLock::new(initial_state)),
             q_state: Arc::new(RwLock::new(QRoutingState::default())),
-            db: Some(db),
+            store: Some(store),
         }
     }
 
-    /// Persist the current UCB1 state to sled (best-effort; logs on failure).
+    /// Persist the current UCB1 state via the store (best-effort).
     async fn persist_ucb_state(&self) {
-        if let Some(db) = &self.db {
+        if let Some(store) = &self.store {
             let state = self.ucb_state.read().await;
             match serde_json::to_vec(&*state) {
-                Ok(bytes) => {
-                    if let Err(e) = db.insert(UCB1_DB_KEY, bytes) {
-                        warn!("Failed to persist UCB1 state: {}", e);
-                    }
-                }
+                Ok(bytes) => store.save(&bytes),
                 Err(e) => warn!("Failed to serialize UCB1 state: {}", e),
             }
         }
@@ -400,7 +370,7 @@ impl Router {
     /// Calculate routing score for a peer based on metrics (higher is better)
     /// Uses adaptive learning: score = α*old_score + β*new_score
     pub fn calculate_peer_score(
-        peer_metrics: &crate::p2p::peer::PeerMetrics,
+        peer_metrics: &crate::peer::PeerMetrics,
         route_stats: Option<&RouteStats>,
     ) -> f64 {
         // Latency score: lower latency = higher score (normalize to 0-1, assuming max 1s latency)
@@ -481,7 +451,7 @@ impl Router {
     pub async fn get_best_forward_peers(
         &self,
         message: &MeshMessage,
-        peer_infos: &[crate::p2p::peer::PeerInfo],
+        peer_infos: &[crate::peer::PeerInfo],
         max_peers: usize,
     ) -> Vec<String> {
         let route_history = self.route_history.read().await;
@@ -532,7 +502,7 @@ impl Router {
     pub async fn get_best_forward_peers_toward(
         &self,
         message: &MeshMessage,
-        peer_infos: &[crate::p2p::peer::PeerInfo],
+        peer_infos: &[crate::peer::PeerInfo],
         max_peers: usize,
         dest: &str,
     ) -> Vec<String> {
@@ -614,7 +584,7 @@ impl Router {
     pub async fn q_select_toward(
         &self,
         message: &MeshMessage,
-        peer_infos: &[crate::p2p::peer::PeerInfo],
+        peer_infos: &[crate::peer::PeerInfo],
         max_peers: usize,
         dest: &str,
     ) -> Vec<String> {
@@ -730,7 +700,7 @@ impl Clone for Router {
             route_history: self.route_history.clone(),
             ucb_state: self.ucb_state.clone(),
             q_state: self.q_state.clone(),
-            db: self.db.clone(),
+            store: self.store.clone(),
         }
     }
 }
@@ -838,7 +808,7 @@ mod tests {
 
     // ─── Q-routing ───────────────────────────────────────────────────────────
 
-    use crate::p2p::peer::{ConnectionState, PeerInfo};
+    use crate::peer::{ConnectionState, PeerInfo};
     use std::net::SocketAddr;
 
     fn connected_peer(id: &str) -> PeerInfo {

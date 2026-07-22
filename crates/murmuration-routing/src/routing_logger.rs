@@ -1,5 +1,5 @@
 /// AI Routing Logger - Logs routing decisions for AI training
-use crate::p2p::peer::PeerInfo;
+use crate::peer::PeerInfo;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Write;

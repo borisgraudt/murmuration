@@ -1,6 +1,6 @@
 [package]
 name = "murmuration-routing"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 license = "MIT"
 description = "Delay-tolerant routing evaluation toolkit: contact traces with heavy-tailed synthetic mobility and an exact foremost-journey oracle."
@@ -11,6 +11,11 @@ readme = "README.md"
 
 [dependencies]
 rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["sync"] }
+uuid = { version = "1.0", features = ["v4"] }
+tracing = "0.1"
 
 [lib]
 name = "murmuration_routing"

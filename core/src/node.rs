@@ -28,6 +28,25 @@ use tokio::time::{interval, sleep, timeout};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+/// sled-backed [`RouterStore`] for the router's learned UCB1 state. Keeps the
+/// storage detail in the node so `murmuration-routing` stays I/O-free.
+struct SledRouterStore(sled::Tree);
+
+impl murmuration_routing::RouterStore for SledRouterStore {
+    fn load(&self) -> Option<Vec<u8>> {
+        self.0
+            .get(b"ucb1_state_v1")
+            .ok()
+            .flatten()
+            .map(|iv| iv.to_vec())
+    }
+    fn save(&self, bytes: &[u8]) {
+        if let Err(e) = self.0.insert(b"ucb1_state_v1", bytes) {
+            warn!("Failed to persist UCB1 state: {}", e);
+        }
+    }
+}
+
 /// Type alias for ping waiter (sent_at, responder)
 type PingWaiter = (Instant, oneshot::Sender<Duration>);
 
@@ -190,7 +209,7 @@ impl Node {
             .and_then(|db| db.open_tree("ucb1_routing"))
             .ok();
         let router = if let Some(tree) = ucb1_db {
-            Router::with_db(id.clone(), tree)
+            Router::with_store(id.clone(), std::sync::Arc::new(SledRouterStore(tree)))
         } else {
             Router::new(id.clone())
         };
@@ -1730,7 +1749,7 @@ impl Node {
                         if let Ok(protocol_msg) = serde_json::from_slice::<Message>(&payload) {
                             if let Message::MeshMessage { .. } = protocol_msg {
                                 if let Some(mesh_msg) =
-                                    MeshMessage::from_protocol_message(&protocol_msg)
+                                    crate::ai::adapter::mesh_from_protocol(&protocol_msg)
                                 {
                                     // Handle as mesh message for routing
                                     if let Err(e) =
@@ -1812,7 +1831,7 @@ impl Node {
                 }
                 Message::MeshMessage { .. } => {
                     // Handle mesh message routing
-                    if let Some(mesh_msg) = MeshMessage::from_protocol_message(&message) {
+                    if let Some(mesh_msg) = crate::ai::adapter::mesh_from_protocol(&message) {
                         if let Err(e) = self.handle_mesh_message(mesh_msg, &peer_id).await {
                             warn!("Error handling mesh message: {}", e);
                         }
@@ -2269,7 +2288,7 @@ impl Node {
 
         if !forward_peers.is_empty() {
             let forward_msg = self.router.prepare_for_forwarding(&message);
-            let protocol_msg = forward_msg.to_protocol_message();
+            let protocol_msg = crate::ai::adapter::mesh_to_protocol(&forward_msg);
 
             // Log selected peers with their scores
             let peer_scores: Vec<(String, f64)> = forward_peers
@@ -2412,7 +2431,7 @@ impl Node {
 
         let mesh_msg = MeshMessage::new(self.id.clone(), to.clone(), packet_bytes);
         let message_id = mesh_msg.message_id.clone();
-        let protocol_msg = mesh_msg.to_protocol_message();
+        let protocol_msg = crate::ai::adapter::mesh_to_protocol(&mesh_msg);
 
         // Check active connections via message_senders (more reliable than peer state)
         let senders = self.message_senders.read().await;

@@ -18,8 +18,8 @@ It provides the mobility substrate a routing study runs on:
   the earliest a message created at a node can reach every other node. This is
   the oracle any store-carry-forward routing scheme should be measured against.
 
-The learned routers (a UCB1 bandit and a Q-routing value-bootstrap forwarder)
-currently live in the parent crate and are being migrated here.
+It also ships the learned routers themselves — a UCB1 bandit and a Q-routing
+value-bootstrap forwarder — behind a storage-agnostic `RouterStore`.
 
 ## Example
 
