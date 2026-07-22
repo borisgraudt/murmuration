@@ -42,7 +42,7 @@
 - Content addressing
 - Local cache
 
-### Router (`core/src/ai/router.rs`)
+### Router (`crates/murmuration-routing/src/router.rs`)
 - Peer scoring (latency, uptime)
 - Path selection
 - Loop prevention

@@ -15,7 +15,7 @@ benchmark into the real `Router`.
 
 ## What is implemented and verified
 
-In `core/src/ai/router.rs`, on the real `Router` type the node uses:
+In `crates/murmuration-routing/src/router.rs`, on the real `Router` type the node uses:
 
 - `QRoutingState` — `q[(dest, neighbour)] → delivery-probability estimate`, with
   optimistic initialisation (`Q_INIT = 1.0`) and the Boyan–Littman update at
