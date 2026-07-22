@@ -1,5 +1,6 @@
 [workspace]
 members = [
-    "core"
+    "core",
+    "crates/murmuration-routing",
 ]
 resolver = "2"

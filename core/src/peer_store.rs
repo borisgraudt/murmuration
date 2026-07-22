@@ -17,7 +17,7 @@ fn peers_path(data_dir: &Path) -> std::path::PathBuf {
     data_dir.join(PEERS_FILE)
 }
 
-/// Load cached peers from `.ely/.../peers.json` (best-effort).
+/// Load cached peers from `.mur/.../peers.json` (best-effort).
 pub fn load_cached_peers(data_dir: &Path) -> Result<Vec<SocketAddr>> {
     let path = peers_path(data_dir);
     if !path.exists() {
@@ -48,7 +48,7 @@ pub fn load_cached_peers(data_dir: &Path) -> Result<Vec<SocketAddr>> {
     Ok(out)
 }
 
-/// Persist a discovered peer to `.ely/.../peers.json` (best-effort).
+/// Persist a discovered peer to `.mur/.../peers.json` (best-effort).
 pub fn record_peer(data_dir: &Path, addr: SocketAddr) -> Result<()> {
     fs::create_dir_all(data_dir).map_err(MeshError::Io)?;
     let path = peers_path(data_dir);

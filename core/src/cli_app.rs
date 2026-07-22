@@ -5,12 +5,12 @@ use std::net::TcpStream;
 use std::time::Duration;
 use tracing_subscriber::EnvFilter;
 
-/// Shared CLI implementation for both `cli` and `ely` binaries.
+/// Shared CLI implementation for both `cli` and `mur` binaries.
 pub fn run(args: Vec<String>) -> anyhow::Result<()> {
     let bin = args
         .first()
         .map(|s| s.as_str())
-        .unwrap_or("ely")
+        .unwrap_or("mur")
         .to_string();
 
     if args.len() < 2 {
@@ -22,7 +22,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
 
     match command.as_str() {
         "start" => {
-            // `ely start <p2p_port> [peer1] [peer2] ... [-d|--daemon]`
+            // `mur start <p2p_port> [peer1] [peer2] ... [-d|--daemon]`
             // We reuse `Config::from_args` by shifting args left (so port becomes args[1]).
             if args.len() < 3 {
                 eprintln!(
@@ -160,7 +160,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
                 eprintln!(
                     "{}",
                     format!(
-                        "Usage: {} fetch <ely://node_id/path> [--port <api_port>]",
+                        "Usage: {} fetch <mur://node_id/path> [--port <api_port>]",
                         bin
                     )
                     .yellow()
@@ -270,7 +270,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
             if args.len() < 3 {
                 eprintln!(
                     "{}",
-                    format!("Usage: {} handle-url <ely://...>", bin).yellow()
+                    format!("Usage: {} handle-url <mur://...>", bin).yellow()
                 );
                 return Ok(());
             }
@@ -287,7 +287,7 @@ pub fn run(args: Vec<String>) -> anyhow::Result<()> {
 }
 
 fn normalize_peer_id(s: &str) -> &str {
-    s.strip_prefix("ely://").unwrap_or(s)
+    s.strip_prefix("mur://").unwrap_or(s)
 }
 
 fn print_usage(bin: &str) {
@@ -326,7 +326,7 @@ fn print_usage(bin: &str) {
         "peers".cyan()
     );
     println!(
-        "  {}                        Show node status (use MESHLINK_API_PORT=<port> for multi-node)",
+        "  {}                        Show node status (use MURMURATION_API_PORT=<port> for multi-node)",
         "status".cyan()
     );
     println!(
@@ -342,15 +342,15 @@ fn print_usage(bin: &str) {
         "publish".cyan()
     );
     println!(
-        "  {} <url>                     Fetch content from mesh (ely://node_id/path)",
+        "  {} <url>                     Fetch content from mesh (mur://node_id/path)",
         "fetch".cyan()
     );
     println!(
-        "  {}                            Install OS-level ely:// URL handler",
+        "  {}                            Install OS-level mur:// URL handler",
         "install-handler".cyan()
     );
     println!(
-        "  {} <ely://url>               Open ely:// URL in browser via Web Gateway",
+        "  {} <mur://url>               Open mur:// URL in browser via Web Gateway",
         "handle-url".cyan()
     );
     println!(
@@ -409,7 +409,7 @@ fn get_api_port(port_override: Option<u16>) -> u16 {
     }
 
     // Priority 2: Environment variable
-    if let Ok(port) = std::env::var("MESHLINK_API_PORT") {
+    if let Ok(port) = std::env::var("MURMURATION_API_PORT") {
         if let Ok(p) = port.parse::<u16>() {
             return p;
         }
@@ -417,7 +417,7 @@ fn get_api_port(port_override: Option<u16>) -> u16 {
 
     // Priority 2: Last used port file (from running node)
     if let Ok(home) = std::env::var("HOME") {
-        let port_file = std::path::Path::new(&home).join(".elysium_api_port");
+        let port_file = std::path::Path::new(&home).join(".murmuration_api_port");
         if let Ok(content) = std::fs::read_to_string(&port_file) {
             if let Ok(port) = content.trim().parse::<u16>() {
                 // Verify it's actually running
@@ -426,7 +426,7 @@ fn get_api_port(port_override: Option<u16>) -> u16 {
                         "{} Connected to API on port {} {}",
                         "✓".green(),
                         port.to_string().cyan(),
-                        "(from ~/.elysium_api_port)".dimmed()
+                        "(from ~/.murmuration_api_port)".dimmed()
                     );
                     return port;
                 }
@@ -464,16 +464,16 @@ fn get_api_port(port_override: Option<u16>) -> u16 {
     // Not found - show helpful message
     eprintln!(
         "{}",
-        "✗ Error: Could not find Elysium API server".red().bold()
+        "✗ Error: Could not find Murmuration API server".red().bold()
     );
     eprintln!("  Make sure a node is running:");
-    eprintln!("  {} {}", "→".dimmed(), "ely start 8080".yellow());
+    eprintln!("  {} {}", "→".dimmed(), "mur start 8080".yellow());
     eprintln!();
     eprintln!("  Or specify the API port explicitly:");
     eprintln!(
         "  {} {}",
         "→".dimmed(),
-        "MESHLINK_API_PORT=17080 ely status".yellow()
+        "MURMURATION_API_PORT=17080 mur status".yellow()
     );
     std::process::exit(1);
 }
@@ -692,7 +692,7 @@ fn chat(target: String, port_override: Option<u16>) -> anyhow::Result<()> {
     let port_clone = port_override;
     std::thread::spawn(move || {
         // Best-effort: filter locally by printing everything (simple MVP).
-        // Users can run `ely chat <peer>` on the right node if they want a 1:1 experience.
+        // Users can run `mur chat <peer>` on the right node if they want a 1:1 experience.
         let _ = watch(port_clone);
     });
 
@@ -736,7 +736,7 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
         // Run in background: spawn new process and detach
         let mut cmd = std::process::Command::new(std::env::current_exe()?);
 
-        // Rebuild args: ["start", "<port>", ...] (without daemon flag and without "core"/"ely")
+        // Rebuild args: ["start", "<port>", ...] (without daemon flag and without "core"/"mur")
         let mut new_args: Vec<String> = vec!["start".to_string()];
         new_args.extend(config_args.iter().skip(1).cloned()); // Skip "core", keep rest (port, peers, etc)
         cmd.args(&new_args);
@@ -745,7 +745,7 @@ fn start_node(start_args: &[String], daemon: bool) -> anyhow::Result<()> {
         let log_dir = config
             .data_dir
             .clone()
-            .unwrap_or_else(|| std::path::PathBuf::from(".ely"));
+            .unwrap_or_else(|| std::path::PathBuf::from(".mur"));
         std::fs::create_dir_all(&log_dir)?;
         let log_file = log_dir.join(format!("node-{}.log", config.listen_addr.port()));
 
@@ -966,7 +966,7 @@ fn show_status(port_override: Option<u16>) -> anyhow::Result<()> {
     };
 
     // Show which API port we're connecting to (helpful for debugging)
-    if port_override.is_none() && std::env::var("MESHLINK_API_PORT").is_err() {
+    if port_override.is_none() && std::env::var("MURMURATION_API_PORT").is_err() {
         // Only show if using auto-detection
         eprintln!(
             "{} Connecting to API on port {} (use --port <api_port> to specify different port)",

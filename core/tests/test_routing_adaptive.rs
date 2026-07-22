@@ -1,8 +1,8 @@
 /// Test adaptive routing functionality — including UCB1 bandit behaviour.
-extern crate meshlink_core;
+extern crate murmuration;
 
-use meshlink_core::ai::router::{MeshMessage, Router};
-use meshlink_core::p2p::peer::{ConnectionState, PeerInfo};
+use murmuration::ai::router::{MeshMessage, Router};
+use murmuration::p2p::peer::{ConnectionState, PeerInfo};
 use std::time::Duration;
 use tokio::time::sleep;
 

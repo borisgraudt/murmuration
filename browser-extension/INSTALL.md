@@ -1,6 +1,6 @@
-# Инструкция по установке и использованию Elysium Chrome Extension
+# Инструкция по установке и использованию Murmuration Chrome Extension
 
-## 📦 Установка расширения
+## Установка расширения
 
 ### Шаг 1: Открой Chrome Extensions
 1. Открой Chrome
@@ -19,47 +19,43 @@
 - Расширение должно появиться в списке
 - Иконка "E" должна появиться в панели расширений Chrome
 
----
+--- ## Использование
 
-## 🚀 Использование
-
-### Вариант 1: Прямой клик на ely:// ссылку
+### Вариант 1: Прямой клик на mur:// ссылку
 
 1. **Запусти узел:**
-   ```bash
-   ely start 8080 -d
-   ```
+  ```bash
+  mur start 8080 -d
+  ```
 
 2. **Опубликуй контент:**
-   ```bash
-   ely publish site/test.html "<h1>Hello Elysium!</h1>"
-   ```
-   Скопируй URL из вывода (например: `ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html`)
+  ```bash
+  mur publish site/test.html "<h1>Hello Murmuration!</h1>"
+  ```
+  Скопируй URL из вывода (например: `mur://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html`)
 
 3. **Создай тестовую ссылку:**
-   - Создай HTML файл с ссылкой:
-   ```bash
-   echo '<a href="ely://ТВОЙ_URL_СЮДА/site/test.html">Открыть ely://</a>' > /tmp/test.html
-   open /tmp/test.html
-   ```
+  - Создай HTML файл с ссылкой:
+  ```bash
+  echo '<a href="mur://ТВОЙ_URL_СЮДА/site/test.html">Открыть mur://</a>' > /tmp/test.html
+  open /tmp/test.html
+  ```
 
 4. **Кликни на ссылку** → Расширение автоматически откроет через Web Gateway
 
-### Вариант 2: Ввод ely:// в адресной строке
+### Вариант 2: Ввод mur:// в адресной строке
 
-1. Введи в адресной строке Chrome: `ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html`
+1. Введи в адресной строке Chrome: `mur://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html`
 2. Нажми Enter
 3. Расширение перехватит и откроет через Web Gateway
 
-### Вариант 3: Через команду ely handle-url
+### Вариант 3: Через команду mur handle-url
 
 ```bash
-ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html"
+mur handle-url "mur://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.html"
 ```
 
----
-
-## ⚙️ Настройки
+--- ## Настройки
 
 1. Кликни на иконку расширения (E) в панели Chrome
 2. Настрой порт Web Gateway (по умолчанию 17081)
@@ -67,39 +63,33 @@ ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.ht
 
 **Примечание:** Порт должен быть на 1 больше чем API порт узла (API порт = P2P порт + 9000)
 
----
+--- ## Что происходит
 
-## 🔍 Что происходит
-
-1. **Клик на ely:// ссылку** → Расширение перехватывает
-2. **Расширение кодирует URL** → `ely://...` → base64 → `/e/...`
+1. **Клик на mur:// ссылку** → Расширение перехватывает
+2. **Расширение кодирует URL** → `mur://...` → base64 → `/e/...`
 3. **Открывается Web Gateway** → `http://localhost:17081/e/...`
 4. **Web Gateway загружает контент** из mesh сети
-5. **JavaScript обновляет title** страницы на оригинальный `ely://` URL
+5. **JavaScript обновляет title** страницы на оригинальный `mur://` URL
 
----
+--- ## Важно знать
 
-## ⚠️ Важно знать
-
-**Chrome не позволяет показывать кастомный протокол `ely://` в адресной строке** из соображений безопасности.
+**Chrome не позволяет показывать кастомный протокол `mur://` в адресной строке** из соображений безопасности.
 
 Что работает:
-- ✅ Перехват `ely://` навигации
-- ✅ Автоматическое перенаправление на Web Gateway
-- ✅ Обновление title страницы на `ely://` URL
-- ✅ Обработка кликов на `ely://` ссылки
+- Перехват `mur://` навигации
+- Автоматическое перенаправление на Web Gateway
+- Обновление title страницы на `mur://` URL
+- Обработка кликов на `mur://` ссылки
 
 Что не работает:
-- ❌ Показ `ely://` в адресной строке (ограничение браузера)
+- Показ `mur://` в адресной строке (ограничение браузера)
 
-**В адресной строке будет:** `http://localhost:17081/e/...`  
-**Но в title страницы будет:** `ely://...`
+**В адресной строке будет:** `http://localhost:17081/e/...`
+**Но в title страницы будет:** `mur://...`
 
----
+--- ## Troubleshooting
 
-## 🐛 Troubleshooting
-
-### Расширение не перехватывает ely:// ссылки
+### Расширение не перехватывает mur:// ссылки
 
 1. Проверь что расширение включено: `chrome://extensions/`
 2. Перезагрузи расширение (кнопка обновления)
@@ -107,9 +97,9 @@ ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.ht
 
 ### Web Gateway не отвечает
 
-1. Проверь что узел запущен: `ely status`
+1. Проверь что узел запущен: `mur status`
 2. Проверь порт: `curl http://localhost:17081/`
-3. Проверь логи: `tail -f .ely/node-8080/node-8080.log`
+3. Проверь логи: `tail -f .mur/node-8080/node-8080.log`
 
 ### Неправильный порт
 
@@ -117,34 +107,32 @@ ely handle-url "ely://CmF7fC1JkW7Vc7FYnFfkjEp4eg2nQmx7oLkisCuzTYsob/site/test.ht
 2. Установи правильный порт (API порт + 1)
 3. Сохрани настройки
 
----
+--- ## Примеры использования
 
-## 📝 Примеры использования
-
-### Пример 1: Открыть ely:// из терминала
+### Пример 1: Открыть mur:// из терминала
 
 ```bash
 # Запусти узел
-ely start 8080 -d
+mur start 8080 -d
 
 # Опубликуй контент
-ely publish site/news.html "<h1>Новости</h1><p>Важная информация</p>"
+mur publish site/news.html "<h1>Новости</h1><p>Важная информация</p>"
 
 # Открой через handle-url (автоматически использует расширение если установлено)
-ely handle-url "ely://ТВОЙ_NODE_ID/site/news.html"
+mur handle-url "mur://ТВОЙ_NODE_ID/site/news.html"
 ```
 
-### Пример 2: Создать HTML страницу с ely:// ссылками
+### Пример 2: Создать HTML страницу с mur:// ссылками
 
 ```html
 <!DOCTYPE html>
 <html>
-<head><title>Elysium Links</title></head>
+<head><title>Murmuration Links</title></head>
 <body>
-  <h1>Elysium Content</h1>
+  <h1>Murmuration Content</h1>
   <ul>
-    <li><a href="ely://node1/site/page1.html">Page 1</a></li>
-    <li><a href="ely://node2/site/page2.html">Page 2</a></li>
+  <li><a href="mur://node1/site/page1.html">Page 1</a></li>
+  <li><a href="mur://node2/site/page2.html">Page 2</a></li>
   </ul>
 </body>
 </html>
@@ -152,13 +140,11 @@ ely handle-url "ely://ТВОЙ_NODE_ID/site/news.html"
 
 Клик по любой ссылке автоматически откроет через Web Gateway.
 
----
-
-## 🎯 Итого
+--- ## Итого
 
 **Текущее поведение:**
-- Клик на `ely://` → открывается `http://localhost:17081/e/...`
-- Title страницы показывает оригинальный `ely://` URL
+- Клик на `mur://` → открывается `http://localhost:17081/e/...`
+- Title страницы показывает оригинальный `mur://` URL
 - Контент загружается из mesh сети
 
 **Это нормально!** Браузер не может показывать кастомные протоколы в адресной строке, но функциональность работает полностью.

@@ -19,7 +19,7 @@ echo "✓ Clippy OK"
 echo ""
 
 echo "3. Building release binaries..."
-cargo build --release --bin core --bin viz --bin cli --bin ely
+cargo build --release --bin core --bin viz --bin cli --bin mur
 echo "✓ Build OK"
 echo ""
 
@@ -45,10 +45,10 @@ else
     exit 1
 fi
 
-if [ -f target/release/ely ] || [ -f ../target/release/ely ]; then
-    echo "✓ ely binary found"
+if [ -f target/release/mur ] || [ -f ../target/release/mur ]; then
+    echo "✓ mur binary found"
 else
-    echo "✗ ely binary not found"
+    echo "✗ mur binary not found"
     exit 1
 fi
 echo ""

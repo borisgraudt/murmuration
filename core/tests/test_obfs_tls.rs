@@ -2,10 +2,10 @@
 //!
 //! Verifies that:
 //! - TLS connections can be established over loopback.
-//! - Arbitrary Elysium application data passes through the tunnel unchanged.
+//! - Arbitrary Murmuration application data passes through the tunnel unchanged.
 //! - The TLS traffic carries WebSocket upgrade framing (looks like HTTPS WS to DPI).
 
-use meshlink_core::transport::obfs::{tls::DEFAULT_SNI, ObfsMode, TlsCamouflage};
+use murmuration::transport::obfs::{tls::DEFAULT_SNI, ObfsMode, TlsCamouflage};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -30,7 +30,7 @@ async fn test_tls_camouflage_data_passthrough() {
     let tcp = TcpStream::connect(addr).await.unwrap();
     let mut tls = cam.connect(tcp).await.unwrap();
 
-    let msg = b"elysium-obfs-tls-test-payload-1234";
+    let msg = b"murmuration-obfs-tls-test-payload-1234";
     tls.write_all(msg).await.unwrap();
 
     let mut echo = vec![0u8; msg.len()];

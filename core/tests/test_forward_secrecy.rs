@@ -4,7 +4,7 @@
 //! connection, so compromising a long-term RSA identity key does not expose
 //! past session traffic.
 
-use meshlink_core::p2p::encryption::EncryptionManager;
+use murmuration::p2p::encryption::EncryptionManager;
 use x25519_dalek::{EphemeralSecret, PublicKey};
 
 /// Establish 10 independent X25519 DH sessions and verify all session keys are unique.

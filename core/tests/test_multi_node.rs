@@ -1,7 +1,7 @@
 /// Test multi-node connectivity and message routing
-extern crate meshlink_core;
+extern crate murmuration;
 
-use meshlink_core::{Config, Node};
+use murmuration::{Config, Node};
 use std::time::Duration;
 use tokio::time::sleep;
 

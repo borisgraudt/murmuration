@@ -52,7 +52,7 @@ class TestMeshLinkClient(unittest.TestCase):
         port = client._discover_api_port()
         
         self.assertEqual(port, 17082)
-        mock_getenv.assert_called_once_with("MESHLINK_API_PORT")
+        mock_getenv.assert_called_once_with("MURMURATION_API_PORT")
 
     @patch('cli.MeshLinkClient._test_connection')
     @patch('cli.os.getenv')

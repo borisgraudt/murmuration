@@ -1,7 +1,7 @@
 /// Test PQC handshake functionality
-extern crate meshlink_core;
+extern crate murmuration;
 
-use meshlink_core::p2p::encryption_pqc::{is_pqc_available, PqcEncryptionManager};
+use murmuration::p2p::encryption_pqc::{is_pqc_available, PqcEncryptionManager};
 
 #[tokio::test]
 async fn test_pqc_key_generation() {

@@ -30,9 +30,9 @@ start_node() {
     cd "$(dirname "$0")/../core" || exit 1
     
     if [ -n "$bootstrap" ]; then
-        MESHLINK_API_PORT=$api_port cargo run --bin core --release -- $port $bootstrap &
+        MURMURATION_API_PORT=$api_port cargo run --bin core --release -- $port $bootstrap &
     else
-        MESHLINK_API_PORT=$api_port cargo run --bin core --release -- $port &
+        MURMURATION_API_PORT=$api_port cargo run --bin core --release -- $port &
     fi
     
     sleep 2
@@ -59,8 +59,8 @@ echo ""
 echo "✅ Nodes started!"
 echo ""
 echo "To interact with nodes:"
-echo "  Node 1: MESHLINK_API_PORT=17080 python3 python_cli/cli.py status"
-echo "  Node 2: MESHLINK_API_PORT=17081 python3 python_cli/cli.py status"
+echo "  Node 1: MURMURATION_API_PORT=17080 python3 python_cli/cli.py status"
+echo "  Node 2: MURMURATION_API_PORT=17081 python3 python_cli/cli.py status"
 echo ""
 echo "Press Ctrl+C to stop all nodes"
 

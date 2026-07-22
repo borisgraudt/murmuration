@@ -1,4 +1,4 @@
-# 🚀 Quick Start: Advanced TUI
+# Quick Start: Advanced TUI
 
 Get started with the new Claude Code-inspired TUI in 2 minutes!
 
@@ -15,15 +15,15 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## Step 2: Start Elysium Node
+## Step 2: Start Murmuration Node
 
 In another terminal:
 
 ```bash
 # Start a node on port 8080
-ely start 8080
+mur start 8080
 
-# Or if ely is not installed:
+# Or if mur is not installed:
 cd ../core
 cargo run --release --bin core -- 8080
 ```
@@ -35,24 +35,24 @@ cargo run --release --bin core -- 8080
 python3 advanced_tui.py
 ```
 
-That's it! 🎉
+That's it!
 
 ## What You'll See
 
 ```
 ┌─────────────────────────────────────────┐
-│ ⚡ Elysium - Decentralized Mesh Network │
+│  Murmuration - Decentralized Mesh Network │
 └─────────────────────────────────────────┘
 
 ┌─────────────────┬─────────────────────────┐
-│ ⚡ Status        │ Message Stream          │
-│ Node: abc123... │ ⚡ Elysium TUI          │
-│ Peers: 2/5      │ Connected to node       │
-│ Port: 17080     │ Type help for commands  │
-│                 │                         │
-│ Connected Peers │ » status                │
-│ ● node1...      │ ✓ Status updated        │
-│ ● node2...      │                         │
+│  Status  │ Message Stream  │
+│ Node: abc123... │  Murmuration TUI  │
+│ Peers: 2/5  │ Connected to node  │
+│ Port: 17080  │ Type help for commands  │
+│  │  │
+│ Connected Peers │ » status  │
+│ ● node1...  │  Status updated  │
+│ ● node2...  │  │
 └─────────────────┴─────────────────────────┘
 
 » Command: _
@@ -63,12 +63,12 @@ That's it! 🎉
 Try these commands:
 
 ```
-status       - Show node details
-peers        - List connected peers
+status  - Show node details
+peers  - List connected peers
 broadcast Hi - Send message to all
-help         - Show all commands
-clear        - Clear messages
-quit         - Exit
+help  - Show all commands
+clear  - Clear messages
+quit  - Exit
 ```
 
 ## Keyboard Shortcuts
@@ -83,26 +83,26 @@ quit         - Exit
 
 ### Terminal 1: Node A
 ```bash
-ely start 8080
+mur start 8080
 ```
 
 ### Terminal 2: Node B (connects to A)
 ```bash
-ely start 8081 127.0.0.1:8080
+mur start 8081 127.0.0.1:8080
 ```
 
 ### Terminal 3: TUI for Node A
 ```bash
 cd python_cli
 source venv/bin/activate
-MESHLINK_API_PORT=17080 python3 advanced_tui.py
+MURMURATION_API_PORT=17080 python3 advanced_tui.py
 ```
 
 ### Terminal 4: TUI for Node B
 ```bash
 cd python_cli
 source venv/bin/activate
-MESHLINK_API_PORT=17081 python3 advanced_tui.py
+MURMURATION_API_PORT=17081 python3 advanced_tui.py
 ```
 
 Now send messages between them!
@@ -118,7 +118,7 @@ Now send messages between them!
 ## Troubleshooting
 
 **"Could not find running node"**
-- Make sure a node is running: `ely start 8080`
+- Make sure a node is running: `mur start 8080`
 - Check API port: Formula is `9000 + node_port`
 - Port 8080 → API 17080
 
@@ -139,4 +139,4 @@ pip install textual
 - Check inbox: `inbox 20`
 - Explore the code: `advanced_tui.py`
 
-Enjoy your beautiful mesh network interface! ⚡
+Enjoy your beautiful mesh network interface!

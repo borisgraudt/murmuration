@@ -6,7 +6,7 @@
 //! - 3-relay chain end-to-end: plaintext recovered correctly.
 //! - Circuit manager lifecycle (add, get, prune).
 
-use meshlink_core::onion::{
+use murmuration::onion::{
     derive_hop_keys, generate_ephemeral_keypair, peel_layer, CircuitBuilder, CircuitLeg,
     CircuitManager, OnionRelay, DEFAULT_HOPS,
 };
@@ -152,7 +152,7 @@ async fn test_circuit_construction_and_relay_chain_3hops() {
     )
     .await;
 
-    use meshlink_core::onion::cell::{CellCommand, OnionCell};
+    use murmuration::onion::cell::{CellCommand, OnionCell};
 
     let cell0 = OnionCell::new(circuit_id, CellCommand::Relay, onion);
     let (hop1, cell1) = guard.process_cell(&cell0).await.unwrap();
@@ -172,7 +172,7 @@ fn test_ephemeral_key_agreement() {
     let (sec_a, pub_a) = generate_ephemeral_keypair();
     let (sec_b, pub_b) = generate_ephemeral_keypair();
 
-    use meshlink_core::onion::complete_hop_dh;
+    use murmuration::onion::complete_hop_dh;
     let (key_a, nonce_a) = complete_hop_dh(sec_a, pub_b, 1, 0);
     let (key_b, nonce_b) = complete_hop_dh(sec_b, pub_a, 1, 0);
 

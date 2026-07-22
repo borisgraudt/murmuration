@@ -1,6 +1,6 @@
-# Elysium: A Delay-Tolerant Mesh Network with UCB1 Adaptive Routing
+# Murmuration: A Delay-Tolerant Mesh Network with UCB1 Adaptive Routing
 
-Elysium is a decentralized, censorship-resistant overlay network designed to
+Murmuration is a decentralized, censorship-resistant overlay network designed to
 operate without fixed infrastructure. Nodes communicate directly over TCP,
 discover peers via UDP multicast, and route messages using a
 **UCB1 multi-armed bandit** algorithm that learns from delivery outcomes at
@@ -18,7 +18,7 @@ censorship — anywhere IP connectivity is unreliable or actively blocked.
 | Infrastructure-free | Direct TCP connections; UDP multicast discovery |
 | End-to-end encryption | RSA-2048 key exchange + AES-256-GCM session cipher |
 | Adaptive routing | UCB1 bandit (Auer et al., 2002) over peer reward history |
-| Content addressing | `ely://<sha256(pubkey)>/<path>` — self-verifying URLs |
+| Content addressing | `mur://<sha256(pubkey)>/<path>` — self-verifying URLs |
 | Delay tolerance | Store-and-forward bundle protocol (USB/file transfer) |
 | Human-readable names | Local name registry: `alice` → node\_id |
 
@@ -63,7 +63,7 @@ core/            Rust implementation (node, CLI, benchmarks, tests)
     p2p/         Protocol frames, encryption, peer manager, discovery
     node.rs      Core event loop (~1400 lines)
     api.rs       JSON-RPC TCP API
-    web_gateway.rs  HTTP gateway for ely:// URLs
+    web_gateway.rs  HTTP gateway for mur:// URLs
     bundle.rs    Store-and-forward protocol
   benches/       Criterion benchmarks (routing.rs)
   tests/         Integration and unit tests
@@ -79,22 +79,22 @@ scripts/         Demo helpers
 
 **From source:**
 ```bash
-git clone https://github.com/borisgraudt/elysium.git
-cd elysium
-make install          # builds and installs the `ely` binary
+git clone https://github.com/borisgraudt/murmuration.git
+cd murmuration
+make install          # builds and installs the `mur` binary
 ```
 
 **Via cargo:**
 ```bash
-cargo install --git https://github.com/borisgraudt/elysium.git \
-  --package meshlink_core --bin ely
+cargo install --git https://github.com/borisgraudt/murmuration.git \
+  --package murmuration --bin mur
 ```
 
 **Docker:**
 ```bash
-docker pull ghcr.io/borisgraudt/elysium:main
+docker pull ghcr.io/borisgraudt/murmuration:main
 docker run --rm -it -p 8080:8080 -p 9998:9998/udp \
-  ghcr.io/borisgraudt/elysium:main start 8080
+  ghcr.io/borisgraudt/murmuration:main start 8080
 ```
 
 ---
@@ -103,32 +103,32 @@ docker run --rm -it -p 8080:8080 -p 9998:9998/udp \
 
 ```bash
 # Terminal 1 — bootstrap node
-ely start 8080 --gateway 8000
+mur start 8080 --gateway 8000
 
 # Terminal 2
-ely start 8081 127.0.0.1:8080 --gateway 8001
+mur start 8081 127.0.0.1:8080 --gateway 8001
 
 # Terminal 3
-ely start 8082 127.0.0.1:8081 --gateway 8002
+mur start 8082 127.0.0.1:8081 --gateway 8002
 
 # Publish content (from node 1)
-MESHLINK_API_PORT=17080 ely publish site/hello.html "<h1>Hello Mesh</h1>"
+MURMURATION_API_PORT=17080 mur publish site/hello.html "<h1>Hello Mesh</h1>"
 
 # Fetch across the mesh (from node 3)
-MESHLINK_API_PORT=17082 ely fetch ely://<node1_id>/site/hello.html
+MURMURATION_API_PORT=17082 mur fetch mur://<node1_id>/site/hello.html
 
 # View in browser
-open http://localhost:8000/ely/<node1_id>/site/hello.html
+open http://localhost:8000/mur/<node1_id>/site/hello.html
 
 # Broadcast message
-MESHLINK_API_PORT=17080 ely broadcast "hello from node 1"
+MURMURATION_API_PORT=17080 mur broadcast "hello from node 1"
 
 # Offline bundle transfer (USB simulation)
-MESHLINK_API_PORT=17080 ely bundle export /tmp/msgs.bundle
-MESHLINK_API_PORT=17082 ely bundle import /tmp/msgs.bundle
+MURMURATION_API_PORT=17080 mur bundle export /tmp/msgs.bundle
+MURMURATION_API_PORT=17082 mur bundle import /tmp/msgs.bundle
 ```
 
-API port formula: `MESHLINK_API_PORT = 9000 + P2P_PORT` (e.g. 8080 → 17080).
+API port formula: `MURMURATION_API_PORT = 9000 + P2P_PORT` (e.g. 8080 → 17080).
 
 ---
 

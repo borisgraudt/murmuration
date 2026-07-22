@@ -6,7 +6,7 @@
 //!
 //! # Usage
 //! ```no_run
-//! use meshlink_core::transport::obfs::{ObfsMode, TlsCamouflage};
+//! use murmuration::transport::obfs::{ObfsMode, TlsCamouflage};
 //! ```
 pub mod obfs;
 

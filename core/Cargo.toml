@@ -1,11 +1,11 @@
 [package]
-name = "meshlink_core"
+name = "murmuration"
 version = "0.1.0"
 edition = "2021"
 default-run = "core"
 
 [lib]
-name = "meshlink_core"
+name = "murmuration"
 path = "src/lib.rs"
 doctest = false
 
@@ -23,18 +23,19 @@ name = "cli"
 path = "src/bin/cli.rs"
 
 [[bin]]
-name = "ely"
-path = "src/bin/ely.rs"
-
-[[bin]]
-name = "simulate"
-path = "src/bin/simulate.rs"
+name = "mur"
+path = "src/bin/mur.rs"
 
 [[bin]]
 name = "benchmark"
 path = "src/bin/benchmark.rs"
 
+[[bin]]
+name = "trace_bench"
+path = "src/bin/trace_bench.rs"
+
 [dependencies]
+murmuration-routing = { path = "../crates/murmuration-routing" }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

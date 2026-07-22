@@ -121,7 +121,7 @@ fn test_stun_external_address_discovery_mock() {
 /// but exercised here as an integration test).
 #[tokio::test]
 async fn test_hole_punch_succeeds_on_loopback() {
-    use meshlink_core::nat::{punch_hole, HolePunchConfig};
+    use murmuration::nat::{punch_hole, HolePunchConfig};
     use std::time::Duration;
 
     // Bind two sockets to get their ports, then release them.

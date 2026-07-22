@@ -8,42 +8,61 @@ use crate::error::{MeshError, Result};
 use crate::p2p::protocol::Message;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fmt;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
+use std::fmt;
 use tokio::sync::RwLock;
 use tracing::{debug, warn};
 
 /// UCB1 exploration constant (standard value = 2.0).
-const UCB1_C: f64 = 2.0;
+///
+/// Read once from `MURMURATION_UCB1_C` if set, else 2.0. The environment override
+/// exists only so the routing benchmark can sweep the exploration constant to
+/// show the results are not an artefact of one lucky value; in normal operation
+/// the variable is unset and this is exactly the textbook constant.
+fn ucb1_c() -> f64 {
+    static C: OnceLock<f64> = OnceLock::new();
+    *C.get_or_init(|| {
+        std::env::var("MURMURATION_UCB1_C")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2.0)
+    })
+}
 /// Number of selections required before switching from heuristic warm-up to pure UCB1.
 const UCB1_MIN_SAMPLES: u64 = 5;
 
-/// Elysium address format: ely://<node_id>
+/// Q-routing learning rate (Boyan & Littman, 1994).
+const Q_ALPHA: f64 = 0.15;
+/// Optimistic initialisation for unseen (destination, neighbour) pairs: they look
+/// maximally good so each neighbour is tried at least once before estimates settle.
+const Q_INIT: f64 = 1.0;
+
+/// Murmuration address format: mur://<node_id>
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ElysiumAddress {
+pub struct MurmurationAddress {
     pub node_id: String,
 }
 
-impl ElysiumAddress {
-    /// Parse from string format: ely://<node_id>
+impl MurmurationAddress {
+    /// Parse from string format: mur://<node_id>
     pub fn from_string(addr: &str) -> Result<Self> {
-        if let Some(stripped) = addr.strip_prefix("ely://") {
+        if let Some(stripped) = addr.strip_prefix("mur://") {
             Ok(Self {
                 node_id: stripped.to_string(),
             })
         } else {
             Err(MeshError::Protocol(format!(
-                "Invalid Elysium address format: {}",
+                "Invalid Murmuration address format: {}",
                 addr
             )))
         }
     }
 }
 
-impl fmt::Display for ElysiumAddress {
+impl fmt::Display for MurmurationAddress {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "ely://{}", self.node_id)
+        write!(f, "mur://{}", self.node_id)
     }
 }
 
@@ -120,8 +139,48 @@ pub struct Router {
     message_cache: Arc<RwLock<HashMap<String, MeshMessage>>>, // Cache for deduplication
     route_history: Arc<RwLock<HashMap<String, RouteStats>>>, // peer_id -> heuristic stats
     ucb_state: Arc<RwLock<UcbState>>,                     // UCB1 bandit state
+    q_state: Arc<RwLock<QRoutingState>>,                  // Q-routing estimates
     /// Optional sled tree for persisting UCB1 state across restarts.
     db: Option<Arc<sled::Tree>>,
+}
+
+/// Q-routing state (Boyan & Littman, 1994).
+///
+/// `q[(dest, neighbour)]` estimates the probability that a message for `dest`
+/// handed to `neighbour` eventually arrives. Unlike the UCB1 bandit, updates
+/// bootstrap from the *neighbour's* advertised estimate rather than a terminal
+/// reward — that is what carries destination information backwards through the
+/// mesh, and it is why the routing benchmark shows Q-routing exceed the
+/// destination-agnostic ceiling under concentrated traffic (see `results/`).
+#[derive(Debug, Default)]
+struct QRoutingState {
+    q: HashMap<(String, String), f64>,
+}
+
+impl QRoutingState {
+    fn get(&self, dest: &str, peer: &str) -> f64 {
+        *self
+            .q
+            .get(&(dest.to_string(), peer.to_string()))
+            .unwrap_or(&Q_INIT)
+    }
+
+    /// The value this node advertises to others for `dest`: the best estimate
+    /// over the given neighbours. A node with no neighbours advertises 0.
+    fn best_over(&self, dest: &str, neighbours: &[String]) -> f64 {
+        neighbours
+            .iter()
+            .map(|p| self.get(dest, p))
+            .fold(0.0_f64, f64::max)
+    }
+
+    fn update(&mut self, dest: &str, peer: &str, target: f64) {
+        let cur = self.get(dest, peer);
+        self.q.insert(
+            (dest.to_string(), peer.to_string()),
+            (1.0 - Q_ALPHA) * cur + Q_ALPHA * target,
+        );
+    }
 }
 
 /// Statistics for a route (peer)
@@ -182,7 +241,7 @@ impl DestBandit {
             Some(s) if s.selections == 0 => f64::INFINITY,
             Some(s) => {
                 let exploration = if self.total_selections > 0 {
-                    (UCB1_C * (self.total_selections as f64).ln() / s.selections as f64).sqrt()
+                    (ucb1_c() * (self.total_selections as f64).ln() / s.selections as f64).sqrt()
                 } else {
                     0.0
                 };
@@ -212,7 +271,7 @@ impl UcbState {
             Some(s) if s.selections == 0 => f64::INFINITY,
             Some(s) => {
                 let exploration = if self.total_selections > 0 {
-                    (UCB1_C * (self.total_selections as f64).ln() / s.selections as f64).sqrt()
+                    (ucb1_c() * (self.total_selections as f64).ln() / s.selections as f64).sqrt()
                 } else {
                     0.0
                 };
@@ -245,6 +304,7 @@ impl Router {
             message_cache: Arc::new(RwLock::new(HashMap::new())),
             route_history: Arc::new(RwLock::new(HashMap::new())),
             ucb_state: Arc::new(RwLock::new(UcbState::default())),
+            q_state: Arc::new(RwLock::new(QRoutingState::default())),
             db: None,
         }
     }
@@ -265,6 +325,7 @@ impl Router {
             message_cache: Arc::new(RwLock::new(HashMap::new())),
             route_history: Arc::new(RwLock::new(HashMap::new())),
             ucb_state: Arc::new(RwLock::new(initial_state)),
+            q_state: Arc::new(RwLock::new(QRoutingState::default())),
             db: Some(db),
         }
     }
@@ -535,6 +596,71 @@ impl Router {
         self.persist_ucb_state().await;
     }
 
+    // ─── Q-routing (value bootstrapping) ─────────────────────────────────────
+    //
+    // These three methods are the node-facing surface of the Q-routing scheme
+    // validated in `results/`. The protocol carries the advertised value between
+    // hops via `Message::RoutingEstimate`; see `docs/Q_ROUTING.md` for the wire
+    // exchange and the (still to be validated on a live multi-node network)
+    // integration plan.
+
+    /// Choose next hops for `dest` by Q-value, best first, limited to `max_peers`.
+    ///
+    /// Optimistic initialisation (`Q_INIT = 1.0`) means any neighbour never yet
+    /// tried for `dest` outscores explored ones, so every neighbour is attempted
+    /// at least once before the estimates take over — the same warm-up the
+    /// benchmark uses. Connected peers only; sender and nodes already on the path
+    /// are excluded for loop-freedom.
+    pub async fn q_select_toward(
+        &self,
+        message: &MeshMessage,
+        peer_infos: &[crate::p2p::peer::PeerInfo],
+        max_peers: usize,
+        dest: &str,
+    ) -> Vec<String> {
+        let q = self.q_state.read().await;
+        let mut scored: Vec<(String, f64)> = peer_infos
+            .iter()
+            .filter(|p| {
+                p.node_id != message.from
+                    && !message.path.contains(&p.node_id)
+                    && p.is_connected()
+            })
+            .map(|p| (p.node_id.clone(), q.get(dest, &p.node_id)))
+            .collect();
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored
+            .into_iter()
+            .take(max_peers)
+            .map(|(id, _)| id)
+            .collect()
+    }
+
+    /// The value this node advertises to an upstream neighbour for `dest`:
+    /// `max` over its own neighbours' Q-estimates. This is the quantity a
+    /// downstream node bootstraps from. `neighbours` is the caller's current
+    /// connected-peer id list.
+    pub async fn q_advertised_value(&self, dest: &str, neighbours: &[String]) -> f64 {
+        self.q_state.read().await.best_over(dest, neighbours)
+    }
+
+    /// Update the Q-estimate for hop `peer` toward `dest` after an outcome.
+    ///
+    /// `downstream_value` is the estimate the neighbour advertised (its
+    /// `q_advertised_value` for `dest`). On success the bootstrap target is that
+    /// value; on failure it is 0. This is the delivery-probability form of the
+    /// Boyan–Littman update.
+    pub async fn q_record(
+        &self,
+        dest: &str,
+        peer: &str,
+        delivered: bool,
+        downstream_value: f64,
+    ) {
+        let target = if delivered { downstream_value } else { 0.0 };
+        self.q_state.write().await.update(dest, peer, target);
+    }
+
     /// Record successful route (for adaptive learning).
     /// Updates both the heuristic history and the UCB1 bandit state.
     /// Reward is latency-weighted: r = clamp(1 - 2*latency_secs, 0.5, 1.0).
@@ -603,6 +729,7 @@ impl Clone for Router {
             message_cache: self.message_cache.clone(),
             route_history: self.route_history.clone(),
             ucb_state: self.ucb_state.clone(),
+            q_state: self.q_state.clone(),
             db: self.db.clone(),
         }
     }
@@ -613,20 +740,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_elysium_address_parse() {
-        let addr = ElysiumAddress::from_string("ely://node123").unwrap();
+    fn test_murmuration_address_parse() {
+        let addr = MurmurationAddress::from_string("mur://node123").unwrap();
         assert_eq!(addr.node_id, "node123");
 
-        let invalid = ElysiumAddress::from_string("invalid");
+        let invalid = MurmurationAddress::from_string("invalid");
         assert!(invalid.is_err());
     }
 
     #[test]
-    fn test_elysium_address_to_string() {
-        let addr = ElysiumAddress {
+    fn test_murmuration_address_to_string() {
+        let addr = MurmurationAddress {
             node_id: "node123".to_string(),
         };
-        assert_eq!(addr.to_string(), "ely://node123");
+        assert_eq!(addr.to_string(), "mur://node123");
     }
 
     #[tokio::test]
@@ -707,5 +834,77 @@ mod tests {
 
         // Should not process if we're in the path
         assert!(!router.should_process(&message).await);
+    }
+
+    // ─── Q-routing ───────────────────────────────────────────────────────────
+
+    use crate::p2p::peer::{ConnectionState, PeerInfo};
+    use std::net::SocketAddr;
+
+    fn connected_peer(id: &str) -> PeerInfo {
+        let addr: SocketAddr = "127.0.0.1:9000".parse().unwrap();
+        let mut p = PeerInfo::new(id.to_string(), addr);
+        p.state = ConnectionState::Connected;
+        p
+    }
+
+    #[tokio::test]
+    async fn test_q_optimistic_init() {
+        let router = Router::new("u".to_string());
+        // Nothing learned yet: every (dest, peer) reads the optimistic Q_INIT,
+        // so the advertised value is 1.0 as long as there is a neighbour.
+        let v = router.q_advertised_value("dst", &["a".to_string()]).await;
+        assert_eq!(v, Q_INIT);
+        // No neighbours → advertises 0 (nothing reachable).
+        assert_eq!(router.q_advertised_value("dst", &[]).await, 0.0);
+    }
+
+    #[tokio::test]
+    async fn test_q_record_bootstraps_downstream_value() {
+        let router = Router::new("u".to_string());
+        // Success bootstraps toward the neighbour's advertised value (0.8).
+        router.q_record("dst", "a", true, 0.8).await;
+        // Q ← (1-α)·1.0 + α·0.8 = 0.85·1 + 0.15·0.8 = 0.97
+        let q_a = router.q_advertised_value("dst", &["a".to_string()]).await;
+        assert!((q_a - 0.97).abs() < 1e-9, "got {q_a}");
+
+        // A failure pulls the estimate down toward 0.
+        for _ in 0..20 {
+            router.q_record("dst", "b", false, 0.0).await;
+        }
+        let q_b = router
+            .q_state
+            .read()
+            .await
+            .get("dst", "b");
+        assert!(q_b < 0.1, "failures should drive Q→0, got {q_b}");
+    }
+
+    #[tokio::test]
+    async fn test_q_select_prefers_higher_value() {
+        let router = Router::new("u".to_string());
+        // Make peer "good" clearly better and "bad" clearly worse for dst.
+        for _ in 0..30 {
+            router.q_record("dst", "good", true, 1.0).await;
+            router.q_record("dst", "bad", false, 0.0).await;
+        }
+        let msg = MeshMessage::new("src".to_string(), Some("dst".to_string()), vec![]);
+        let peers = vec![connected_peer("good"), connected_peer("bad")];
+        let picked = router.q_select_toward(&msg, &peers, 1, "dst").await;
+        assert_eq!(picked, vec!["good".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_q_select_excludes_sender_and_path() {
+        let router = Router::new("u".to_string());
+        let mut msg = MeshMessage::new("sender".to_string(), Some("dst".to_string()), vec![]);
+        msg.path.push("visited".to_string());
+        let peers = vec![
+            connected_peer("sender"),
+            connected_peer("visited"),
+            connected_peer("fresh"),
+        ];
+        let picked = router.q_select_toward(&msg, &peers, 3, "dst").await;
+        assert_eq!(picked, vec!["fresh".to_string()]);
     }
 }

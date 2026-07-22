@@ -1,4 +1,4 @@
-# 🔧 Troubleshooting Guide
+# Troubleshooting Guide
 
 ## Проблемы с подключением узлов
 
@@ -6,8 +6,8 @@
 
 **Симптомы:**
 ```
-ERROR meshlink_core::p2p::peer: Invalid handshake ack length: 1213486160 bytes (raw bytes: [72, 84, 84, 80], hex: 48545450)
-ERROR meshlink_core::node: Handshake failed with 127.0.0.1:8080: Peer error: Invalid handshake ack length...
+ERROR murmuration::p2p::peer: Invalid handshake ack length: 1213486160 bytes (raw bytes: [72, 84, 84, 80], hex: 48545450)
+ERROR murmuration::node: Handshake failed with 127.0.0.1:8080: Peer error: Invalid handshake ack length...
 ```
 
 **Причина:**
@@ -17,49 +17,47 @@ ERROR meshlink_core::node: Handshake failed with 127.0.0.1:8080: Peer error: Inv
 Убедитесь, что вы указываете **P2P порт**, а не API или Gateway порт:
 
 ```bash
-# ✅ ПРАВИЛЬНО: Указываем P2P порт
-ely start 8080                    # Первый узел на P2P порту 8080
-ely start 8081 127.0.0.1:8080     # Второй узел подключается к P2P порту 8080
+# ПРАВИЛЬНО: Указываем P2P порт
+mur start 8080  # Первый узел на P2P порту 8080
+mur start 8081 127.0.0.1:8080  # Второй узел подключается к P2P порту 8080
 
-# ❌ НЕПРАВИЛЬНО: Указываем API или Gateway порт
-ely start 8081 127.0.0.1:17080    # 17080 - это API порт, не P2P!
-ely start 8081 127.0.0.1:17081    # 17081 - это Gateway порт, не P2P!
+# НЕПРАВИЛЬНО: Указываем API или Gateway порт
+mur start 8081 127.0.0.1:17080  # 17080 - это API порт, не P2P!
+mur start 8081 127.0.0.1:17081  # 17081 - это Gateway порт, не P2P!
 ```
 
 **Как понять, какой порт использовать:**
-- **P2P порт** - это первый аргумент команды `ely start <p2p_port>`
-  - Например: `ely start 8080` → P2P порт = 8080
+- **P2P порт** - это первый аргумент команды `mur start <p2p_port>`
+  - Например: `mur start 8080` → P2P порт = 8080
 - **API порт** - автоматически вычисляется как `9000 + P2P порт`
   - Например: P2P порт 8080 → API порт = 17080
 - **Gateway порт** - автоматически вычисляется как `API порт + 1`
   - Например: API порт 17080 → Gateway порт = 17081
-  - Или можно указать явно: `ely start 8080 --gateway 8000`
+  - Или можно указать явно: `mur start 8080 --gateway 8000`
 
 **Пример правильного запуска:**
 
 ```bash
 # Terminal 1: Первый узел
-ely start 8080 --gateway 8000
+mur start 8080 --gateway 8000
 # P2P порт: 8080
 # API порт: 17080 (автоматически)
 # Gateway порт: 8000 (указан явно)
 
 # Terminal 2: Второй узел (подключается к первому)
-ely start 8081 127.0.0.1:8080 --gateway 8001
+mur start 8081 127.0.0.1:8080 --gateway 8001
 # P2P порт: 8081
 # Подключается к: 127.0.0.1:8080 (P2P порт первого узла!)
 # API порт: 17081 (автоматически)
 # Gateway порт: 8001 (указан явно)
 
 # Terminal 3: Третий узел (подключается ко второму)
-ely start 8082 127.0.0.1:8081 --gateway 8002
+mur start 8082 127.0.0.1:8081 --gateway 8002
 # P2P порт: 8082
 # Подключается к: 127.0.0.1:8081 (P2P порт второго узла!)
 ```
 
----
-
-## Другие проблемы
+--- ## Другие проблемы
 
 ### Узел не видит других узлов
 
@@ -72,10 +70,10 @@ ely start 8082 127.0.0.1:8081 --gateway 8002
 **Решение:**
 ```bash
 # Проверить статус узла
-ely status
+mur status
 
 # Проверить список пиров
-ely peers
+mur peers
 ```
 
 ### Web Gateway не открывается в браузере
@@ -88,18 +86,18 @@ ely peers
 **Решение:**
 ```bash
 # Запустить узел с явным Gateway портом
-ely start 8080 --gateway 8000
+mur start 8080 --gateway 8000
 
 # Открыть в браузере
 # http://localhost:8000/
 # или
-# http://ely.local:8000/ (если настроен /etc/hosts)
+# http://mur.local:8000/ (если настроен /etc/hosts)
 ```
 
 ### Контент не находится через fetch
 
 **Проверьте:**
-1. Контент опубликован: `ely publish <path> <content>`
+1. Контент опубликован: `mur publish <path> <content>`
 2. Указан правильный `node_id` в URL
 3. Узлы подключены друг к другу
 4. TTL не истек (по умолчанию 10 секунд)
@@ -107,41 +105,37 @@ ely start 8080 --gateway 8000
 **Решение:**
 ```bash
 # Опубликовать контент
-ely publish site/index.html "<h1>Hello</h1>"
+mur publish site/index.html "<h1>Hello</h1>"
 # Скопировать node_id из вывода
 
 # Получить контент
-ely fetch ely://<node_id>/site/index.html
+mur fetch mur://<node_id>/site/index.html
 ```
 
----
-
-## Полезные команды
+--- ## Полезные команды
 
 ```bash
 # Проверить статус узла
-ely status
+mur status
 
 # Список всех пиров
-ely peers
+mur peers
 
 # Последние сообщения
-ely inbox 20
+mur inbox 20
 
 # Ping пира
-ely ping <peer_id>
+mur ping <peer_id>
 
 # Просмотр логов в реальном времени
-ely watch
+mur watch
 ```
 
----
-
-## Логи и отладка
+--- ## Логи и отладка
 
 **Включить debug логи:**
 ```bash
-RUST_LOG=debug ely start 8080
+RUST_LOG=debug mur start 8080
 ```
 
 **Проверить логи узла:**

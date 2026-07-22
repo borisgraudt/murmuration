@@ -1,6 +1,6 @@
-# Elysium Python CLI & TUI
+# Murmuration Python CLI & TUI
 
-Beautiful command-line and terminal user interfaces for Elysium nodes, inspired by Claude Code.
+Beautiful command-line and terminal user interfaces for Murmuration nodes, inspired by Claude Code.
 
 ## Installation
 
@@ -22,7 +22,7 @@ pip3 install --break-system-packages rich textual
 
 ## Usage
 
-### 🎨 Advanced TUI (NEW - Recommended!)
+### Advanced TUI (NEW - Recommended!)
 
 The most beautiful and feature-rich interface:
 
@@ -38,7 +38,7 @@ Features:
 - **Keyboard shortcuts:** Ctrl+C (quit), Ctrl+L (clear), Ctrl+R (refresh)
 - **Claude Code theme:** Dark mode with orange accents
 
-### 📟 Simple TUI
+### Simple TUI
 
 Basic TUI interface:
 
@@ -46,7 +46,7 @@ Basic TUI interface:
 python3 tui.py
 ```
 
-### 💻 Interactive CLI (REPL Mode)
+### Interactive CLI (REPL Mode)
 
 ```bash
 python3 cli.py -i
@@ -58,7 +58,7 @@ python3 cli.py repl
 
 This starts an interactive REPL with a beautiful terminal interface.
 
-### ⚡ Command Mode
+### Command Mode
 
 Quick commands without interactive mode:
 
@@ -85,19 +85,19 @@ python3 cli.py watch
 ## Features
 
 ### Advanced TUI (advanced_tui.py)
-- 🎨 **Claude Code inspired design** - Dark theme with orange (#f0883e) accents
-- 📊 **Multi-panel layout** - Status, Peers, Messages panels
-- 🔄 **Real-time updates** - Auto-refreshing status and peer list
-- 💬 **Live message stream** - Watch messages appear in real-time
+- **Claude Code inspired design** - Dark theme with orange (#f0883e) accents
+- **Multi-panel layout** - Status, Peers, Messages panels
+- **Real-time updates** - Auto-refreshing status and peer list
+- **Live message stream** - Watch messages appear in real-time
 - ⌨️ **Command history** - Navigate with arrow keys
-- 🎯 **Keyboard shortcuts** - Ctrl+C, Ctrl+L, Ctrl+R, F1
-- ✨ **Modern TUI** - Built with Textual framework
+- **Keyboard shortcuts** - Ctrl+C, Ctrl+L, Ctrl+R, F1
+- **Modern TUI** - Built with Textual framework
 
 ### CLI & Simple TUI
-- 💻 **Interactive REPL mode** - Beautiful command-line interface
-- 📊 **Rich peer information** - Detailed peer status with color coding
-- 🔍 **Automatic API port discovery** - Finds running nodes automatically
-- ✨ **Modern UI** - Panels, tables, and beautiful formatting
+- **Interactive REPL mode** - Beautiful command-line interface
+- **Rich peer information** - Detailed peer status with color coding
+- **Automatic API port discovery** - Finds running nodes automatically
+- **Modern UI** - Panels, tables, and beautiful formatting
 
 ## Screenshots
 
@@ -113,7 +113,7 @@ The CLI features:
 The CLI automatically discovers API ports. You can also set it manually:
 
 ```bash
-export MESHLINK_API_PORT=17080
+export MURMURATION_API_PORT=17080
 python3 cli.py status
 ```
 
@@ -142,13 +142,13 @@ python3 cli.py status
 
 | Feature | CLI | Simple TUI | Advanced TUI |
 |---------|-----|------------|--------------|
-| Interactive mode | ✅ | ✅ | ✅ |
-| Command mode | ✅ | ❌ | ❌ |
-| Real-time panels | ❌ | ❌ | ✅ |
-| Auto-refresh | ❌ | ❌ | ✅ |
-| Message streaming | ✅ | ✅ | ✅ |
-| Command history | ❌ | ❌ | ✅ |
-| Keyboard shortcuts | ❌ | ❌ | ✅ |
-| Split-pane layout | ❌ | ❌ | ✅ |
+| Interactive mode |  |  |  |
+| Command mode |  |  |  |
+| Real-time panels |  |  |  |
+| Auto-refresh |  |  |  |
+| Message streaming |  |  |  |
+| Command history |  |  |  |
+| Keyboard shortcuts |  |  |  |
+| Split-pane layout |  |  |  |
 
 **Recommendation:** Use `advanced_tui.py` for the best experience!

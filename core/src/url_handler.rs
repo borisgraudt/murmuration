@@ -1,4 +1,4 @@
-// URL Handler functions for OS-level ely:// URL scheme registration
+// URL Handler functions for OS-level mur:// URL scheme registration
 
 use anyhow::Result;
 use colored::*;
@@ -9,12 +9,12 @@ pub fn install_url_handler() -> Result<()> {
     use std::path::PathBuf;
 
     println!(
-        "{} Registering ely:// URL handler for macOS...",
+        "{} Registering mur:// URL handler for macOS...",
         "🔧".cyan().bold()
     );
 
     let home = std::env::var("HOME")?;
-    let app_dir = PathBuf::from(&home).join(".elysium");
+    let app_dir = PathBuf::from(&home).join(".murmuration");
     fs::create_dir_all(&app_dir)?;
 
     let plist = r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -22,15 +22,15 @@ pub fn install_url_handler() -> Result<()> {
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.elysium.ely</string>
+    <string>com.murmuration.mur</string>
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>Elysium Protocol</string>
+            <string>Murmuration Protocol</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>ely</string>
+                <string>mur</string>
             </array>
         </dict>
     </array>
@@ -54,7 +54,7 @@ pub fn install_url_handler() -> Result<()> {
         );
     }
 
-    println!("{} URL handler registered for ely://", "✓".green().bold());
+    println!("{} URL handler registered for mur://", "✓".green().bold());
     println!("  Binary: {}", ely_path.display());
 
     Ok(())
@@ -67,7 +67,7 @@ pub fn install_url_handler() -> Result<()> {
     use std::path::PathBuf;
 
     println!(
-        "{} Registering ely:// URL handler for Linux...",
+        "{} Registering mur:// URL handler for Linux...",
         "🔧".cyan().bold()
     );
 
@@ -79,15 +79,15 @@ pub fn install_url_handler() -> Result<()> {
     let desktop_entry = format!(
         r#"[Desktop Entry]
 Type=Application
-Name=Elysium
+Name=Murmuration
 Exec={} handle-url %u
-MimeType=x-scheme-handler/ely;
+MimeType=x-scheme-handler/mur;
 NoDisplay=true
 "#,
         ely_path.display()
     );
 
-    let desktop_file = apps_dir.join("elysium.desktop");
+    let desktop_file = apps_dir.join("murmuration.desktop");
     fs::write(&desktop_file, desktop_entry)?;
     let mut perms = fs::metadata(&desktop_file)?.permissions();
     perms.set_mode(0o755);
@@ -95,11 +95,11 @@ NoDisplay=true
 
     let _ = std::process::Command::new("xdg-mime")
         .arg("default")
-        .arg("elysium.desktop")
-        .arg("x-scheme-handler/ely")
+        .arg("murmuration.desktop")
+        .arg("x-scheme-handler/mur")
         .output();
 
-    println!("{} URL handler registered for ely://", "✓".green().bold());
+    println!("{} URL handler registered for mur://", "✓".green().bold());
     Ok(())
 }
 
@@ -119,24 +119,24 @@ pub fn install_url_handler() -> Result<()> {
 }
 
 pub fn handle_url(url: String) -> Result<()> {
-    if !url.starts_with("ely://") {
-        return Err(anyhow::anyhow!("Invalid ely:// URL: {}", url));
+    if !url.starts_with("mur://") {
+        return Err(anyhow::anyhow!("Invalid mur:// URL: {}", url));
     }
 
     let api_port = detect_api_port();
     let web_port = api_port + 1;
 
     // Use new clean URL format: /e/<base64_encoded>
-    // Try ely.local first (cleaner), fallback to localhost
+    // Try mur.local first (cleaner), fallback to localhost
     use base64::{engine::general_purpose, Engine as _};
     let encoded = general_purpose::URL_SAFE_NO_PAD.encode(url.as_bytes());
-    // Try ely.local first (cleaner), fallback to localhost if not configured
-    let gateway_url = format!("http://ely.local:{}/e/{}", web_port, encoded);
+    // Try mur.local first (cleaner), fallback to localhost if not configured
+    let gateway_url = format!("http://mur.local:{}/e/{}", web_port, encoded);
 
-    // Note: If ely.local is not in /etc/hosts, browser will show error
-    // User should add "127.0.0.1 ely.local" to /etc/hosts for cleaner URLs
+    // Note: If mur.local is not in /etc/hosts, browser will show error
+    // User should add "127.0.0.1 mur.local" to /etc/hosts for cleaner URLs
 
-    println!("{} Opening ely:// URL in browser...", "🌐".cyan().bold());
+    println!("{} Opening mur:// URL in browser...", "🌐".cyan().bold());
     println!("  URL: {}", url.yellow());
 
     #[cfg(target_os = "macos")]
@@ -159,7 +159,7 @@ pub fn handle_url(url: String) -> Result<()> {
 
 fn detect_api_port() -> u16 {
     if let Ok(home) = std::env::var("HOME") {
-        let port_file = std::path::PathBuf::from(home).join(".elysium_api_port");
+        let port_file = std::path::PathBuf::from(home).join(".murmuration_api_port");
         if let Ok(port_str) = std::fs::read_to_string(&port_file) {
             if let Ok(port) = port_str.trim().parse::<u16>() {
                 return port;

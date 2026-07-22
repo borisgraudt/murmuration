@@ -45,7 +45,7 @@ pub fn derive_hop_keys(
     circuit_id: u32,
     hop_index: u8,
 ) -> (Key<Aes256Gcm>, Vec<u8>) {
-    let info = format!("elysium-onion-v1-circuit{}-hop{}", circuit_id, hop_index);
+    let info = format!("murmuration-onion-v1-circuit{}-hop{}", circuit_id, hop_index);
     let hk = Hkdf::<Sha256>::new(None, shared_secret);
 
     let mut okm = [0u8; 44]; // 32 B key + 12 B nonce
