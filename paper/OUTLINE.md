@@ -89,8 +89,9 @@ relay sees is destination-agnostic and that, not the algorithm, is the ceiling.
 | 7 | fig7_hightraffic_concentrated | §5 |
 
 ## Remaining experiments before submission
-1.  **Trace-driven re-run** (§6) — infrastructure in `core/src/trace.rs`; needs a
-  DTN store-carry-forward routing loop over the trace + a results table/figure.
+1.  **Real trace** (§6) — synthetic heavy-tailed DTN done (`trace_bench`, finding
+  8). Remaining: feed a real CRAWDAD/Infocom trace via `ContactTrace::load_csv`,
+  and port the Q-routing bootstrap into the DTN forwarder (PRoPHET stands in now).
 2.  **Live multi-node Q-routing** (§5) — wire `RoutingEstimate` into `node.rs`,
   extend `tests/test_multi_node.rs` to assert the delivery-rate gain.
 3.  Prose for abstract, §1, §2, §8, §9.
