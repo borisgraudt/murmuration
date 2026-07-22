@@ -12,7 +12,7 @@
 
 ### Шаг 3: Загрузи расширение
 1. Нажми кнопку **"Загрузить распакованное расширение"** (Load unpacked)
-2. Выбери папку: `/Users/boris/Desktop/meshlink/browser-extension`
+2. Выбери папку: `/Users/boris/Desktop/murmuration/browser-extension`
 3. Нажми "Выбрать"
 
 ### Шаг 4: Проверь установку

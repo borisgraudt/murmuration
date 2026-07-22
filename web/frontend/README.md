@@ -1,6 +1,6 @@
-# Murmuration Web - MeshNet Dashboard
+# Murmuration Web - Murmuration Dashboard
 
-Beautiful web dashboard for MeshNet in Claude Code style.
+Beautiful web dashboard for Murmuration in Claude Code style.
 
 ## Local Development
 
